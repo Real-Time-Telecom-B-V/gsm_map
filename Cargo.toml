@@ -2,7 +2,20 @@
 name = "gsm_map"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "GSM MAP (Mobile Application Part) SMS operations per 3GPP TS 29.002"
+license = "MIT"
+repository = "https://github.com/killdashnine/gsm_map"
 
 [dependencies]
+rasn = "0.28"
+hex = "0.4"
+tcap = { path = "../tcap" }
+thiserror = "2"
+
+[dev-dependencies]
+sccp = { path = "../sccp" }
+m3ua = { path = "../m3ua" }
+m2pa = { path = "../m2pa" }
+mtp3 = { path = "../mtp3" }
+sctp = { path = "../sctp" }
+tokio = { version = "1", features = ["full"] }
