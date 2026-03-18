@@ -49,7 +49,7 @@ fn build_tcap_begin(otid: &[u8], op_code: i64, map_param: &[u8], ac_oid: &rasn::
     otid_tlv.extend_from_slice(otid);
 
     // Dialogue portion
-    let dialogue = dialogue::build_begin_dialogue_portion(ac_oid);
+    let dialogue = wrap_dialogue_portion(&dialogue::build_begin_dialogue(ac_oid));
 
     // Begin: [APPLICATION 2 CONSTRUCTED] = 0x62
     let mut begin_content = Vec::new();
@@ -99,7 +99,7 @@ fn build_tcap_end(dtid: &[u8], op_code: i64, map_param: &[u8], ac_oid: &rasn::ty
     dtid_tlv.extend_from_slice(dtid);
 
     // Dialogue portion
-    let dialogue = dialogue::build_end_dialogue_portion(ac_oid);
+    let dialogue = wrap_dialogue_portion(&dialogue::build_end_dialogue(ac_oid));
 
     // End: [APPLICATION 4 CONSTRUCTED] = 0x64
     let mut end_content = Vec::new();
@@ -112,6 +112,14 @@ fn build_tcap_end(dtid: &[u8], op_code: i64, map_param: &[u8], ac_oid: &rasn::ty
     end.extend_from_slice(&end_content);
 
     end
+}
+
+/// Wrap EXTERNAL bytes in [APPLICATION 11] CONSTRUCTED for manual TCAP building.
+fn wrap_dialogue_portion(external: &[u8]) -> Vec<u8> {
+    let mut dp = vec![0x6B];
+    encode_length(&mut dp, external.len());
+    dp.extend_from_slice(external);
+    dp
 }
 
 fn encode_integer(value: i64) -> Vec<u8> {

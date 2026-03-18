@@ -36,6 +36,13 @@ const OPC_SCF: u32 = 500;
 
 // ─── Wire encoding helpers ─────────────────────────────────────
 
+fn wrap_dialogue_portion(external: &[u8]) -> Vec<u8> {
+    let mut dp = vec![0x6B];
+    encode_length(&mut dp, external.len());
+    dp.extend_from_slice(external);
+    dp
+}
+
 fn encode_length(buf: &mut Vec<u8>, len: usize) {
     if len < 128 {
         buf.push(len as u8);
@@ -70,7 +77,7 @@ fn build_tcap_begin(otid: &[u8], op_code: i64, map_param: &[u8], ac_oid: &rasn::
     encode_length(&mut otid_tlv, otid.len());
     otid_tlv.extend_from_slice(otid);
 
-    let dialogue = dialogue::build_begin_dialogue_portion(ac_oid);
+    let dialogue = wrap_dialogue_portion(&dialogue::build_begin_dialogue(ac_oid));
 
     let mut content = Vec::new();
     content.extend_from_slice(&otid_tlv);
@@ -109,7 +116,7 @@ fn build_tcap_end(dtid: &[u8], op_code: i64, map_param: &[u8], ac_oid: &rasn::ty
     encode_length(&mut dtid_tlv, dtid.len());
     dtid_tlv.extend_from_slice(dtid);
 
-    let dialogue = dialogue::build_end_dialogue_portion(ac_oid);
+    let dialogue = wrap_dialogue_portion(&dialogue::build_end_dialogue(ac_oid));
 
     let mut content = Vec::new();
     content.extend_from_slice(&dtid_tlv);
@@ -148,7 +155,7 @@ fn build_tcap_continue(otid: &[u8], dtid: &[u8], op_code: i64, map_param: &[u8],
     encode_length(&mut dtid_tlv, dtid.len());
     dtid_tlv.extend_from_slice(dtid);
 
-    let dialogue = dialogue::build_begin_dialogue_portion(ac_oid);
+    let dialogue = wrap_dialogue_portion(&dialogue::build_begin_dialogue(ac_oid));
 
     let mut content = Vec::new();
     content.extend_from_slice(&otid_tlv);

@@ -10,19 +10,17 @@ use rasn::types::ObjectIdentifier;
 /// = 0.0.17.773.1.1.1
 const DIALOGUE_AS_ID: &[u32] = &[0, 0, 17, 773, 1, 1, 1];
 
-/// Build a dialogue portion for a TCAP Begin (AARQ-apdu with application-context-name).
+/// Build the EXTERNAL content for a TCAP Begin dialogue portion (AARQ-apdu).
 ///
-/// Returns raw BER bytes for the dialogue portion, suitable for use as
-/// `tcap::DialoguePortion.encoding`.
-pub fn build_begin_dialogue_portion(ac_oid: &ObjectIdentifier) -> Vec<u8> {
-    // Build AARQ-apdu:
-    //   [APPLICATION 0] IMPLICIT SEQUENCE {
-    //     protocol-version [0] IMPLICIT BIT STRING {version1} DEFAULT,
-    //     application-context-name [1] EXPLICIT OID
-    //   }
+/// Returns BER-encoded EXTERNAL bytes (tag 0x28) containing:
+/// - direct-reference: dialogue-as-id OID
+/// - encoding: single-ASN1-type [0] AARQ-apdu with application-context-name
+///
+/// Use with `tcap::DialoguePortion { external: Any::new(bytes) }`.
+pub fn build_begin_dialogue(ac_oid: &ObjectIdentifier) -> Vec<u8> {
     let ac_oid_bytes = encode_oid(ac_oid);
 
-    // [1] EXPLICIT wrapping the OID
+    // [1] EXPLICIT wrapping the application-context-name OID
     let mut ac_name_tlv = vec![0xA1]; // CONTEXT 1 CONSTRUCTED
     encode_length(&mut ac_name_tlv, ac_oid_bytes.len());
     ac_name_tlv.extend_from_slice(&ac_oid_bytes);
@@ -35,13 +33,12 @@ pub fn build_begin_dialogue_portion(ac_oid: &ObjectIdentifier) -> Vec<u8> {
     encode_length(&mut aarq, aarq_content.len());
     aarq.extend_from_slice(&aarq_content);
 
-    // DialoguePDU is a CHOICE, AARQ is the first option — no extra tag needed
     // Wrap in [0] EXPLICIT for EXTERNAL.encoding single-ASN1-type
     let mut single_asn1 = vec![0xA0];
     encode_length(&mut single_asn1, aarq.len());
     single_asn1.extend_from_slice(&aarq);
 
-    // Build EXTERNAL:
+    // Build EXTERNAL content:
     //   direct-reference: dialogue-as-id OID
     //   encoding: single-ASN1-type [0] AARQ
     let direct_ref_bytes = encode_oid_raw(DIALOGUE_AS_ID);
@@ -53,21 +50,18 @@ pub fn build_begin_dialogue_portion(ac_oid: &ObjectIdentifier) -> Vec<u8> {
     external_content.extend_from_slice(&direct_ref_tlv);
     external_content.extend_from_slice(&single_asn1);
 
-    // Wrap in EXTERNAL: [UNIVERSAL 8] CONSTRUCTED = 0x28
+    // EXTERNAL: [UNIVERSAL 8] CONSTRUCTED = 0x28
     let mut external = vec![0x28];
     encode_length(&mut external, external_content.len());
     external.extend_from_slice(&external_content);
 
-    // Dialogue portion: [APPLICATION 11] CONSTRUCTED = 0x6B
-    let mut dialogue_portion = vec![0x6B];
-    encode_length(&mut dialogue_portion, external.len());
-    dialogue_portion.extend_from_slice(&external);
-
-    dialogue_portion
+    external
 }
 
-/// Build a dialogue portion for a TCAP End (AARE-apdu with application-context-name).
-pub fn build_end_dialogue_portion(ac_oid: &ObjectIdentifier) -> Vec<u8> {
+/// Build the EXTERNAL content for a TCAP End dialogue portion (AARE-apdu).
+///
+/// Returns BER-encoded EXTERNAL bytes (tag 0x28).
+pub fn build_end_dialogue(ac_oid: &ObjectIdentifier) -> Vec<u8> {
     let ac_oid_bytes = encode_oid(ac_oid);
 
     // [1] EXPLICIT wrapping the OID
@@ -108,17 +102,12 @@ pub fn build_end_dialogue_portion(ac_oid: &ObjectIdentifier) -> Vec<u8> {
     external_content.extend_from_slice(&direct_ref_tlv);
     external_content.extend_from_slice(&single_asn1);
 
-    // Wrap in EXTERNAL: [UNIVERSAL 8] CONSTRUCTED = 0x28
+    // EXTERNAL: [UNIVERSAL 8] CONSTRUCTED = 0x28
     let mut external = vec![0x28];
     encode_length(&mut external, external_content.len());
     external.extend_from_slice(&external_content);
 
-    // Dialogue portion: [APPLICATION 11] CONSTRUCTED = 0x6B
-    let mut dialogue_portion = vec![0x6B];
-    encode_length(&mut dialogue_portion, external.len());
-    dialogue_portion.extend_from_slice(&external);
-
-    dialogue_portion
+    external
 }
 
 /// Encode an OID as a full TLV (tag 0x06 + length + value).
@@ -180,11 +169,12 @@ mod tests {
 
     #[test]
     fn begin_dialogue_has_correct_tags() {
-        let ac = application_context::short_msg_gateway_context(application_context::V3);
-        let bytes = build_begin_dialogue_portion(&ac);
+        let bytes = build_begin_dialogue(
+            &application_context::short_msg_gateway_context(application_context::V3),
+        );
 
-        // Should start with 0x6B (APPLICATION 11 CONSTRUCTED)
-        assert_eq!(bytes[0], 0x6B, "Expected APPLICATION 11 tag");
+        // Should start with 0x28 (EXTERNAL = UNIVERSAL 8 CONSTRUCTED)
+        assert_eq!(bytes[0], 0x28, "Expected EXTERNAL tag");
 
         // Should contain OID tag 0x06 (dialogue-as-id)
         assert!(bytes.contains(&0x06), "Should contain OID tag");
@@ -195,10 +185,12 @@ mod tests {
 
     #[test]
     fn end_dialogue_has_correct_tags() {
-        let ac = application_context::short_msg_gateway_context(application_context::V3);
-        let bytes = build_end_dialogue_portion(&ac);
+        let bytes = build_end_dialogue(
+            &application_context::short_msg_gateway_context(application_context::V3),
+        );
 
-        assert_eq!(bytes[0], 0x6B, "Expected APPLICATION 11 tag");
+        // Should start with 0x28 (EXTERNAL)
+        assert_eq!(bytes[0], 0x28, "Expected EXTERNAL tag");
         assert!(bytes.contains(&0x61), "Should contain AARE tag");
     }
 }
