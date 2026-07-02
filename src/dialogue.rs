@@ -169,9 +169,9 @@ mod tests {
 
     #[test]
     fn begin_dialogue_has_correct_tags() {
-        let bytes = build_begin_dialogue(
-            &application_context::short_msg_gateway_context(application_context::V3),
-        );
+        let bytes = build_begin_dialogue(&application_context::short_msg_gateway_context(
+            application_context::V3,
+        ));
 
         // Should start with 0x28 (EXTERNAL = UNIVERSAL 8 CONSTRUCTED)
         assert_eq!(bytes[0], 0x28, "Expected EXTERNAL tag");
@@ -185,9 +185,9 @@ mod tests {
 
     #[test]
     fn end_dialogue_has_correct_tags() {
-        let bytes = build_end_dialogue(
-            &application_context::short_msg_gateway_context(application_context::V3),
-        );
+        let bytes = build_end_dialogue(&application_context::short_msg_gateway_context(
+            application_context::V3,
+        ));
 
         // Should start with 0x28 (EXTERNAL)
         assert_eq!(bytes[0], 0x28, "Expected EXTERNAL tag");

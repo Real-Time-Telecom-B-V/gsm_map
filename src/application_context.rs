@@ -35,53 +35,87 @@ pub const V3: u32 = 3;
 
 // ─── Location Management ───────────────────────────────────────
 /// networkLocUpContext (ac 1)
-pub fn network_loc_up_context(version: u32) -> ObjectIdentifier { map_ac(1, version) }
+pub fn network_loc_up_context(version: u32) -> ObjectIdentifier {
+    map_ac(1, version)
+}
 /// locationCancellationContext (ac 2)
-pub fn location_cancellation_context(version: u32) -> ObjectIdentifier { map_ac(2, version) }
+pub fn location_cancellation_context(version: u32) -> ObjectIdentifier {
+    map_ac(2, version)
+}
 /// interVlrInfoRetrievalContext (ac 15)
-pub fn inter_vlr_info_retrieval_context(version: u32) -> ObjectIdentifier { map_ac(15, version) }
+pub fn inter_vlr_info_retrieval_context(version: u32) -> ObjectIdentifier {
+    map_ac(15, version)
+}
 /// msPurgingContext (ac 27)
-pub fn ms_purging_context(version: u32) -> ObjectIdentifier { map_ac(27, version) }
+pub fn ms_purging_context(version: u32) -> ObjectIdentifier {
+    map_ac(27, version)
+}
 
 // ─── Authentication ────────────────────────────────────────────
 /// infoRetrievalContext (ac 5) — v1/v2
-pub fn info_retrieval_context(version: u32) -> ObjectIdentifier { map_ac(5, version) }
+pub fn info_retrieval_context(version: u32) -> ObjectIdentifier {
+    map_ac(5, version)
+}
 /// authenticationFailureReportContext (ac 27) — v3
-pub fn authentication_failure_report_context(version: u32) -> ObjectIdentifier { map_ac(27, version) }
+pub fn authentication_failure_report_context(version: u32) -> ObjectIdentifier {
+    map_ac(27, version)
+}
 
 // ─── Subscriber Data ──────────────────────────────────────────
 /// subscriberDataMngtContext (ac 16)
-pub fn subscriber_data_mngt_context(version: u32) -> ObjectIdentifier { map_ac(16, version) }
+pub fn subscriber_data_mngt_context(version: u32) -> ObjectIdentifier {
+    map_ac(16, version)
+}
 
 // ─── Fault Recovery ───────────────────────────────────────────
 /// resetContext (ac 10)
-pub fn reset_context(version: u32) -> ObjectIdentifier { map_ac(10, version) }
+pub fn reset_context(version: u32) -> ObjectIdentifier {
+    map_ac(10, version)
+}
 
 // ─── Call Handling ────────────────────────────────────────────
 /// roamingNumberEnquiryContext (ac 3)
-pub fn roaming_number_enquiry_context(version: u32) -> ObjectIdentifier { map_ac(3, version) }
+pub fn roaming_number_enquiry_context(version: u32) -> ObjectIdentifier {
+    map_ac(3, version)
+}
 /// locationInfoRetrievalContext (ac 5)
-pub fn location_info_retrieval_context(version: u32) -> ObjectIdentifier { map_ac(5, version) }
+pub fn location_info_retrieval_context(version: u32) -> ObjectIdentifier {
+    map_ac(5, version)
+}
 
 // ─── USSD ─────────────────────────────────────────────────────
 /// networkUnstructuredSsContext (ac 19)
-pub fn network_unstructured_ss_context(version: u32) -> ObjectIdentifier { map_ac(19, version) }
+pub fn network_unstructured_ss_context(version: u32) -> ObjectIdentifier {
+    map_ac(19, version)
+}
 
 // ─── Supplementary Services ──────────────────────────────────
 /// ss-InvocationNotificationContext (ac 36)
-pub fn ss_invocation_notification_context(version: u32) -> ObjectIdentifier { map_ac(36, version) }
+pub fn ss_invocation_notification_context(version: u32) -> ObjectIdentifier {
+    map_ac(36, version)
+}
 
 // ─── SMS ──────────────────────────────────────────────────────
 /// shortMsgGatewayContext (ac 20) — for SRI-SM
-pub fn short_msg_gateway_context(version: u32) -> ObjectIdentifier { map_ac(20, version) }
+pub fn short_msg_gateway_context(version: u32) -> ObjectIdentifier {
+    map_ac(20, version)
+}
 /// shortMsgMO-RelayContext (ac 21) — for MO-ForwardSM
-pub fn short_msg_mo_relay_context(version: u32) -> ObjectIdentifier { map_ac(21, version) }
+pub fn short_msg_mo_relay_context(version: u32) -> ObjectIdentifier {
+    map_ac(21, version)
+}
 /// shortMsgMT-RelayContext (ac 25) — for MT-ForwardSM (v3)
-pub fn short_msg_mt_relay_context(version: u32) -> ObjectIdentifier { map_ac(25, version) }
+pub fn short_msg_mt_relay_context(version: u32) -> ObjectIdentifier {
+    map_ac(25, version)
+}
 /// shortMsgAlertContext (ac 23) — for alertServiceCentre
-pub fn short_msg_alert_context(version: u32) -> ObjectIdentifier { map_ac(23, version) }
+pub fn short_msg_alert_context(version: u32) -> ObjectIdentifier {
+    map_ac(23, version)
+}
 /// shortMsgMT-VgcsRelayContext (ac 21) — for MT-ForwardSM (v1/v2)
-pub fn short_msg_relay_context(version: u32) -> ObjectIdentifier { map_ac(21, version) }
+pub fn short_msg_relay_context(version: u32) -> ObjectIdentifier {
+    map_ac(21, version)
+}
 
 // ─── CAP (CAMEL Application Part) — 3GPP TS 29.078 ──────────
 // CAP OID structure:
@@ -101,23 +135,31 @@ pub const CAP_V4: u32 = 4;
 
 fn cap_ac(version: u32, ac_id: u32) -> ObjectIdentifier {
     let components: Vec<u32> = match version {
-        1 => vec![0, 4, 0, 0, 1, 0, 50, 0],          // CAP v1
-        2 => vec![0, 4, 0, 0, 1, 0, 50, 1],          // CAP v2
-        3 => vec![0, 4, 0, 0, 1, 21, 3, ac_id],      // CAP v3
-        4 => vec![0, 4, 0, 0, 1, 23, 3, ac_id],      // CAP v4
-        _ => vec![0, 4, 0, 0, 1, 21, 3, ac_id],      // default to v3
+        1 => vec![0, 4, 0, 0, 1, 0, 50, 0],     // CAP v1
+        2 => vec![0, 4, 0, 0, 1, 0, 50, 1],     // CAP v2
+        3 => vec![0, 4, 0, 0, 1, 21, 3, ac_id], // CAP v3
+        4 => vec![0, 4, 0, 0, 1, 23, 3, ac_id], // CAP v4
+        _ => vec![0, 4, 0, 0, 1, 21, 3, ac_id], // default to v3
     };
     ObjectIdentifier::new_unchecked(components.into())
 }
 
 /// gsmSSF-scfGenericAC — gsmSSF ↔ gsmSCF call control
-pub fn cap_gsmssf_scf_generic(version: u32) -> ObjectIdentifier { cap_ac(version, 4) }
+pub fn cap_gsmssf_scf_generic(version: u32) -> ObjectIdentifier {
+    cap_ac(version, 4)
+}
 /// gsmSSF-scfAssistHandoffAC
-pub fn cap_gsmssf_scf_assist_handoff(version: u32) -> ObjectIdentifier { cap_ac(version, 6) }
+pub fn cap_gsmssf_scf_assist_handoff(version: u32) -> ObjectIdentifier {
+    cap_ac(version, 6)
+}
 /// gsmSRF-gsmSCF-AC — specialised resources
-pub fn cap_gsmsrf_scf(version: u32) -> ObjectIdentifier { cap_ac(version, 10) }
+pub fn cap_gsmsrf_scf(version: u32) -> ObjectIdentifier {
+    cap_ac(version, 10)
+}
 /// cap-sms-AC — SMS control
-pub fn cap_sms_ac(version: u32) -> ObjectIdentifier { cap_ac(version, 50) }
+pub fn cap_sms_ac(version: u32) -> ObjectIdentifier {
+    cap_ac(version, 50)
+}
 
 #[cfg(test)]
 mod tests {

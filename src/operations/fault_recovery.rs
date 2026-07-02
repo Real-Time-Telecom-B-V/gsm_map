@@ -5,7 +5,7 @@
 
 use rasn::prelude::*;
 
-use crate::types::{IsdnAddressString, Imsi};
+use crate::types::{Imsi, IsdnAddressString};
 
 /// Reset-Arg (op 37).
 /// Sent by the HLR to VLRs after HLR restart.

@@ -22,8 +22,8 @@ pub mod types;
 
 pub use error::MapError;
 pub use types::{
-    op_codes, operation_name, AddressString, Imsi, IsdnAddressString, Lmsi,
-    LocationInfoWithLmsi, SmRpDa, SmRpOa,
+    op_codes, operation_name, AddressString, Imsi, IsdnAddressString, Lmsi, LocationInfoWithLmsi,
+    SmRpDa, SmRpOa,
 };
 
 #[cfg(test)]
@@ -47,11 +47,13 @@ mod tests {
     use operations::ready_for_sm::{AlertReason, ReadyForSmArg};
     use operations::report_sm::{ReportSmDeliveryStatusArg, SmDeliveryOutcome};
     use operations::sri_sm::{RoutingInfoForSmArg, RoutingInfoForSmRes};
-    use operations::subscriber_data::{InsertSubscriberDataArg, DeleteSubscriberDataArg, SubscriberStatus};
-    use operations::supplementary::{RegisterSsArg, InterrogateSsArg, BasicServiceCode};
+    use operations::subscriber_data::{
+        DeleteSubscriberDataArg, InsertSubscriberDataArg, SubscriberStatus,
+    };
+    use operations::supplementary::{BasicServiceCode, InterrogateSsArg, RegisterSsArg};
     use operations::ussd::{
-        ProcessUnstructuredSsRequestArg, ProcessUnstructuredSsRequestRes,
-        UnstructuredSsRequestArg, UnstructuredSsNotifyArg,
+        ProcessUnstructuredSsRequestArg, ProcessUnstructuredSsRequestRes, UnstructuredSsNotifyArg,
+        UnstructuredSsRequestArg,
     };
 
     // ── Helper ──
@@ -67,7 +69,7 @@ mod tests {
     #[test]
     fn sri_sm_arg() {
         let arg = RoutingInfoForSmArg {
-            msisdn: vec![0x91, 0x13, 0x16, 0x32, 0x54, 0x76, 0xF8].into(),
+            msisdn: vec![0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9].into(),
             sm_rp_pri: true,
             service_centre_address: vec![0x91, 0x44, 0x77, 0x89, 0x01, 0x23].into(),
             gprs_support_indicator: None,
@@ -95,7 +97,7 @@ mod tests {
     fn mo_forward_sm() {
         let arg = MoForwardSmArg {
             sm_rp_da: SmRpDa::ServiceCentreAddressDa(vec![0x91, 0x44].into()),
-            sm_rp_oa: SmRpOa::MsIsdn(vec![0x91, 0x13].into()),
+            sm_rp_oa: SmRpOa::MsIsdn(vec![0x91, 0x51].into()),
             sm_rp_ui: vec![0x01, 0x00, 0x0B].into(),
             imsi: None,
         };
@@ -116,7 +118,7 @@ mod tests {
     #[test]
     fn report_sm_delivery_status() {
         let arg = ReportSmDeliveryStatusArg {
-            msisdn: vec![0x91, 0x13].into(),
+            msisdn: vec![0x91, 0x51].into(),
             service_centre_address: vec![0x91, 0x44].into(),
             sm_delivery_outcome: SmDeliveryOutcome::SuccessfulTransfer,
         };
@@ -126,7 +128,7 @@ mod tests {
     #[test]
     fn alert_service_centre() {
         let arg = AlertServiceCentreArg {
-            msisdn: vec![0x91, 0x13].into(),
+            msisdn: vec![0x91, 0x51].into(),
             service_centre_address: vec![0x91, 0x44].into(),
         };
         round_trip(&arg);
@@ -135,7 +137,7 @@ mod tests {
     #[test]
     fn inform_service_centre() {
         let arg = InformServiceCentreArg {
-            stored_msisdn: Some(vec![0x91, 0x13].into()),
+            stored_msisdn: Some(vec![0x91, 0x51].into()),
             mw_status: None,
         };
         round_trip(&arg);
@@ -207,11 +209,13 @@ mod tests {
     #[test]
     fn send_authentication_info_res_triplets() {
         let res = SendAuthenticationInfoRes {
-            authentication_set_list: Some(AuthenticationSetList::TripletList(vec![AuthenticationTriplet {
-                rand: vec![0u8; 16].into(),
-                sres: vec![0u8; 4].into(),
-                kc: vec![0u8; 8].into(),
-            }])),
+            authentication_set_list: Some(AuthenticationSetList::TripletList(vec![
+                AuthenticationTriplet {
+                    rand: vec![0u8; 16].into(),
+                    sres: vec![0u8; 4].into(),
+                    kc: vec![0u8; 8].into(),
+                },
+            ])),
         };
         round_trip(&res);
     }
@@ -219,13 +223,15 @@ mod tests {
     #[test]
     fn send_authentication_info_res_quintuplets() {
         let res = SendAuthenticationInfoRes {
-            authentication_set_list: Some(AuthenticationSetList::QuintupletList(vec![AuthenticationQuintuplet {
-                rand: vec![0u8; 16].into(),
-                xres: vec![0u8; 8].into(),
-                ck: vec![0u8; 16].into(),
-                ik: vec![0u8; 16].into(),
-                autn: vec![0u8; 16].into(),
-            }])),
+            authentication_set_list: Some(AuthenticationSetList::QuintupletList(vec![
+                AuthenticationQuintuplet {
+                    rand: vec![0u8; 16].into(),
+                    xres: vec![0u8; 8].into(),
+                    ck: vec![0u8; 16].into(),
+                    ik: vec![0u8; 16].into(),
+                    autn: vec![0u8; 16].into(),
+                },
+            ])),
         };
         round_trip(&res);
     }
@@ -236,7 +242,7 @@ mod tests {
     fn insert_subscriber_data() {
         let arg = InsertSubscriberDataArg {
             imsi: Some(vec![0x09, 0x10].into()),
-            msisdn: Some(vec![0x91, 0x13].into()),
+            msisdn: Some(vec![0x91, 0x51].into()),
             category: None,
             subscriber_status: Some(SubscriberStatus::ServiceGranted),
             bearer_service_list: None,
@@ -266,7 +272,7 @@ mod tests {
         let arg = ProcessUnstructuredSsRequestArg {
             ussd_data_coding_scheme: vec![0x0F].into(), // Default GSM 7-bit
             ussd_string: vec![0xAA, 0x58, 0x0C, 0xA6, 0x82].into(), // *100# in GSM 7-bit
-            msisdn: Some(vec![0x91, 0x13, 0x16, 0x32].into()),
+            msisdn: Some(vec![0x91, 0x51, 0x55, 0x10].into()),
         };
         round_trip(&arg);
     }
@@ -303,7 +309,7 @@ mod tests {
     #[test]
     fn send_routing_info() {
         let arg = SendRoutingInfoArg {
-            msisdn: vec![0x91, 0x13, 0x16, 0x32, 0x54, 0x76, 0xF8].into(),
+            msisdn: vec![0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9].into(),
             cug_check_info: None,
             number_of_forwarding: None,
             interrogation_type: None,
@@ -317,7 +323,7 @@ mod tests {
         let arg = ProvideRoamingNumberArg {
             imsi: vec![0x09, 0x10].into(),
             msc_number: vec![0x91, 0x44].into(),
-            msisdn: Some(vec![0x91, 0x13].into()),
+            msisdn: Some(vec![0x91, 0x51].into()),
             lmsi: Some(vec![0x00, 0x00, 0x00, 0x01].into()),
             gsm_bearer_capability: None,
         };
@@ -339,7 +345,7 @@ mod tests {
         let arg = RegisterSsArg {
             ss_code: vec![0x21].into(), // CFU (Call Forwarding Unconditional)
             basic_service: Some(BasicServiceCode::Teleservice(vec![0x11].into())),
-            forwarded_to_number: Some(vec![0x91, 0x13, 0x16].into()),
+            forwarded_to_number: Some(vec![0x91, 0x51, 0x55].into()),
             no_reply_condition_time: None,
         };
         round_trip(&arg);
@@ -399,23 +405,19 @@ mod tests {
     // ── CAP (CAMEL) ──
 
     use operations::cap::{
-        InitialDpArg, ConnectArg, ReleaseCallArg,
-        RequestReportBcsmEventArg, EventReportBcsmArg,
-        ApplyChargingArg, ApplyChargingReportArg,
-        FurnishChargingInformationArg, CancelArg,
-        BcsmEvent, EventTypeBcsm, MonitorMode,
-        InitialDpSmsArg, ConnectSmsArg, ReleaseSmsArg,
-        RequestReportSmsEventArg, EventReportSmsArg,
-        SmsEvent, EventTypeSms,
-        PlayAnnouncementArg, ConnectToResourceArg,
+        ApplyChargingArg, ApplyChargingReportArg, BcsmEvent, CancelArg, ConnectArg, ConnectSmsArg,
+        ConnectToResourceArg, EventReportBcsmArg, EventReportSmsArg, EventTypeBcsm, EventTypeSms,
+        FurnishChargingInformationArg, InitialDpArg, InitialDpSmsArg, MonitorMode,
+        PlayAnnouncementArg, ReleaseCallArg, ReleaseSmsArg, RequestReportBcsmEventArg,
+        RequestReportSmsEventArg, SmsEvent,
     };
 
     #[test]
     fn cap_initial_dp() {
         let arg = InitialDpArg {
             service_key: 1.into(),
-            called_party_number: Some(vec![0x84, 0x13, 0x16, 0x32, 0x54, 0x76, 0xF8].into()),
-            calling_party_number: Some(vec![0x84, 0x31, 0x61, 0x23, 0x45].into()),
+            called_party_number: Some(vec![0x84, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9].into()),
+            calling_party_number: Some(vec![0x84, 0x51, 0x55, 0x51, 0x00].into()),
             calling_partys_category: None,
             original_called_party_id: None,
             event_type_bcsm: Some(EventTypeBcsm::CollectedInfo),
@@ -433,9 +435,7 @@ mod tests {
     #[test]
     fn cap_connect() {
         let arg = ConnectArg {
-            destination_routing_address: vec![
-                vec![0x84, 0x13, 0x16, 0x32, 0x54, 0x76, 0xF8].into(),
-            ],
+            destination_routing_address: vec![vec![0x84, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9].into()],
             original_called_party_id: None,
             calling_partys_category: None,
             redirecting_party_id: None,
@@ -484,7 +484,10 @@ mod tests {
     #[test]
     fn cap_apply_charging() {
         let arg = ApplyChargingArg {
-            ach_billing_charging_characteristics: vec![0xA0, 0x06, 0x80, 0x04, 0x00, 0x00, 0x01, 0x2C].into(),
+            ach_billing_charging_characteristics: vec![
+                0xA0, 0x06, 0x80, 0x04, 0x00, 0x00, 0x01, 0x2C,
+            ]
+            .into(),
             party_to_charge: None,
         };
         round_trip(&arg);
@@ -522,7 +525,7 @@ mod tests {
     fn cap_initial_dp_sms() {
         let arg = InitialDpSmsArg {
             service_key: 100.into(),
-            destination_subscriber_number: Some(vec![0x91, 0x13, 0x16].into()),
+            destination_subscriber_number: Some(vec![0x91, 0x51, 0x55].into()),
             calling_party_number: Some(vec![0x91, 0x44, 0x77].into()),
             event_type_sms: Some(EventTypeSms::SmsCollectedInfo),
             imsi: Some(vec![0x09, 0x10].into()),
@@ -544,7 +547,7 @@ mod tests {
     #[test]
     fn cap_connect_sms() {
         let arg = ConnectSmsArg {
-            calling_partys_number: Some(vec![0x91, 0x13].into()),
+            calling_partys_number: Some(vec![0x91, 0x51].into()),
             destination_subscriber_number: Some(vec![0x91, 0x44].into()),
             smsc_address: Some(vec![0x91, 0x44, 0x77].into()),
         };
@@ -599,7 +602,7 @@ mod tests {
     #[test]
     fn cap_connect_to_resource() {
         let arg = ConnectToResourceArg {
-            resource_address_ipv4: Some(vec![0x84, 0x13, 0x16].into()),
+            resource_address_ipv4: Some(vec![0x84, 0x51, 0x55].into()),
             resource_address_none: None,
         };
         round_trip(&arg);
@@ -632,7 +635,7 @@ mod tests {
     #[test]
     fn send_imsi() {
         let arg = SendImsiArg {
-            msisdn: vec![0x91, 0x13].into(),
+            msisdn: vec![0x91, 0x51].into(),
         };
         round_trip(&arg);
     }
@@ -640,8 +643,8 @@ mod tests {
     // ── Subscriber Information ──
 
     use operations::subscriber_info::{
-        AnyTimeInterrogationArg, AnyTimeModificationArg, ProvideSubscriberInfoArg,
-        RequestedInfo, SubscriberIdentity, SubscriberInfo,
+        AnyTimeInterrogationArg, AnyTimeModificationArg, ProvideSubscriberInfoArg, RequestedInfo,
+        SubscriberIdentity,
     };
 
     #[test]
@@ -664,7 +667,7 @@ mod tests {
     #[test]
     fn any_time_interrogation() {
         let arg = AnyTimeInterrogationArg {
-            subscriber_identity: SubscriberIdentity::Msisdn(vec![0x91, 0x13].into()),
+            subscriber_identity: SubscriberIdentity::Msisdn(vec![0x91, 0x51].into()),
             requested_info: RequestedInfo {
                 location_information: Some(()),
                 subscriber_state: Some(()),
@@ -754,8 +757,8 @@ mod tests {
     // ── Handover ──
 
     use operations::handover::{
-        PrepareHandoverArg, SendEndSignalArg, ForwardAccessSignallingArg,
-        PrepareSubsequentHandoverArg,
+        ForwardAccessSignallingArg, PrepareHandoverArg, PrepareSubsequentHandoverArg,
+        SendEndSignalArg,
     };
 
     #[test]
@@ -826,9 +829,9 @@ mod tests {
     // ── LCS ──
 
     use operations::lcs::{
-        LocationEstimateType, LocationType, LcsClientId, LcsClientType,
-        ProvideSubscriberLocationArg, SubscriberLocationReportArg, LcsEvent,
-        SendRoutingInfoForLcsArg, SubscriberIdentityLcs,
+        LcsClientId, LcsClientType, LcsEvent, LocationEstimateType, LocationType,
+        ProvideSubscriberLocationArg, SendRoutingInfoForLcsArg, SubscriberIdentityLcs,
+        SubscriberLocationReportArg,
     };
 
     #[test]
@@ -868,7 +871,7 @@ mod tests {
                 lcs_client_name: None,
             },
             network_node_number: vec![0x91, 0x44].into(),
-            msisdn: Some(vec![0x91, 0x13].into()),
+            msisdn: Some(vec![0x91, 0x51].into()),
             imsi: None,
             imei: None,
             location_estimate: Some(vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()),
@@ -881,7 +884,7 @@ mod tests {
     fn send_routing_info_for_lcs() {
         let arg = SendRoutingInfoForLcsArg {
             mlc_number: vec![0x91, 0x44].into(),
-            target_ms: SubscriberIdentityLcs::Msisdn(vec![0x91, 0x13].into()),
+            target_ms: SubscriberIdentityLcs::Msisdn(vec![0x91, 0x51].into()),
         };
         round_trip(&arg);
     }

@@ -1,21 +1,23 @@
 [package]
 name = "gsm_map"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-description = "GSM MAP (Mobile Application Part) SMS operations per 3GPP TS 29.002"
+rust-version = "1.80"
+description = "GSM MAP (Mobile Application Part) operations per 3GPP TS 29.002 — SMS (MO/MT-ForwardSM, SRI-for-SM), mobility, authentication, USSD, supplementary services, and CAMEL/CAP — as BER-codable ASN.1 types"
+authors = ["Real Time Telecom B.V."]
 license = "MIT"
-repository = "https://github.com/killdashnine/gsm_map"
+readme = "README.md"
+repository = "https://github.com/Real-Time-Telecom-B-V/gsm_map"
+homepage = "https://github.com/Real-Time-Telecom-B-V/gsm_map"
+keywords = ["gsm", "map", "ss7", "3gpp", "sms"]
+categories = ["network-programming"]
+exclude = [".github/", "docs/"]
 
 [dependencies]
 rasn = "0.28"
 hex = "0.4"
-tcap = { path = "../tcap" }
 thiserror = "2"
+tcap = { git = "https://github.com/Real-Time-Telecom-B-V/tcap", branch = "main" }
 
-[dev-dependencies]
-sccp = { path = "../sccp" }
-m3ua = { path = "../m3ua" }
-m2pa = { path = "../m2pa" }
-mtp3 = { path = "../mtp3" }
-sctp = { path = "../sctp" }
-tokio = { version = "1", features = ["full"] }
+[lints.clippy]
+correctness = { level = "deny", priority = -1 }

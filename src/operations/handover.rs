@@ -8,7 +8,7 @@
 
 use rasn::prelude::*;
 
-use crate::types::{IsdnAddressString};
+use crate::types::IsdnAddressString;
 
 /// TargetRNC-Id or target cell for handover.
 pub type TargetCellId = OctetString;

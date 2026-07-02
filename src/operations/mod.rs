@@ -1,11 +1,11 @@
 // SMS
-pub mod sri_sm;
-pub mod mo_forward_sm;
-pub mod mt_forward_sm;
-pub mod report_sm;
 pub mod alert_sc;
 pub mod inform_sc;
+pub mod mo_forward_sm;
+pub mod mt_forward_sm;
 pub mod ready_for_sm;
+pub mod report_sm;
+pub mod sri_sm;
 
 // Location management
 pub mod location;
