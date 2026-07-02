@@ -18,8 +18,9 @@ ignore = []
 [bans]
 multiple-versions = "warn"
 wildcards = "warn"
-# gsm_map is pure Rust: the runtime deps are rasn (ASN.1 BER), hex, thiserror,
-# and the tcap crate. No C libraries are linked, so there is no C-FFI ban list.
+# gsm_map's runtime deps are rasn (ASN.1 BER), hex, thiserror, and tcap; the
+# optional `python` feature adds pyo3 (the Rust-backed wheel). No C libraries are
+# linked in the default build, so there is no C-FFI ban list.
 
 [licenses]
 # The crate is MIT; keep dependencies OSI-permissive.
@@ -42,6 +43,10 @@ confidence-threshold = 0.9
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# `tcap` is a sibling RTT crate consumed as a git dependency until it is
-# published to crates.io; allow that one source explicitly.
-allow-git = ["https://github.com/Real-Time-Telecom-B-V/tcap"]
+# `tcap` (runtime) and `sccp` (dev-only, used by the full-stack MAP ▸ TCAP ▸ SCCP
+# integration bench) are sibling RTT crates consumed as git dependencies until
+# they are published to crates.io; allow those sources explicitly.
+allow-git = [
+    "https://github.com/Real-Time-Telecom-B-V/tcap",
+    "https://github.com/Real-Time-Telecom-B-V/sccp",
+]

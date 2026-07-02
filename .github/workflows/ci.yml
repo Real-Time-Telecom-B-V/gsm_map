@@ -1,7 +1,14 @@
 # .github/workflows/ci.yml — gsm_map CI
 #
-# gsm_map is a pure-Rust library (GSM MAP / CAMEL-CAP operation types). No
-# Python, no wheels — a single Rust job runs format, clippy, and tests.
+# Two stories from one source tree:
+#   * Rust crate (crates.io): default build is pyo3-free.
+#   * Python wheel (PyPI):    the `python` feature adds the PyO3 bindings for the
+#     GSM MAP SMS operation set.
+#
+# IMPORTANT: never use `--all-features`. That would enable `extension-module`,
+# which tells pyo3 NOT to link libpython and so breaks any Rust test binary.
+# `extension-module` is set only by maturin (the wheel build). We test the
+# pyo3-free default AND `--features python` (which links libpython) separately.
 name: CI
 
 on:
@@ -26,12 +33,85 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # libpython for the `--features python` build/link (abi3 still links libpython
+      # for a non-extension-module test binary).
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Format
         run: cargo fmt --all -- --check
 
-      # Clippy honours [lints.clippy] in Cargo.toml (correctness denied).
-      - name: Clippy
+      # Lint both faces of the crate. Clippy honours [lints.clippy] in Cargo.toml
+      # (correctness denied).
+      - name: Clippy (pyo3-free)
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Test
+      - name: Clippy (python feature)
+        run: cargo clippy --features python --lib -- -D warnings
+
+      - name: Test (pyo3-free)
         run: cargo test
+
+      - name: Test (python feature)
+        run: cargo test --features python
+
+      # Keep the benchmarks compiling — including the full-stack MAP ▸ TCAP ▸ SCCP
+      # integration bench (pulls the sibling sccp dev-dep).
+      - name: Benches compile
+        run: cargo bench --no-run
+
+      # Deterministic counting-allocator leak gate (codec + full-stack churn).
+      - name: Memory-leak check
+        run: cargo run --release --example leak_check
+
+  # Build the wheel and run the Python parity suite.
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build extension (maturin develop)
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install maturin pytest
+          maturin develop
+
+      - name: Import smoke
+        run: . .venv/bin/activate && python -c "import gsm_map; print(gsm_map.__version__)"
+
+      - name: pytest
+        run: . .venv/bin/activate && pytest python/tests -q
+
+  # Free-threaded ("no-GIL") smoke. pyo3 >= 0.28 declares gil_used=false, so the
+  # module must import and run without re-enabling the GIL.
+  # Allowed to fail for now (toolchain availability), but exercises the no-GIL path.
+  python-freethreaded:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14t"
+
+      - name: Build + test on free-threaded CPython
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install maturin pytest
+          maturin develop --release
+          python -c "import sys, gsm_map; assert sys._is_gil_enabled() is False; print('no-GIL OK', gsm_map.__version__)"
+          pytest python/tests -q

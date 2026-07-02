@@ -20,6 +20,13 @@ pub mod error;
 pub mod operations;
 pub mod types;
 
+/// PyO3 bindings (`--features python`). The default crate build is pyo3-free.
+#[cfg(feature = "python")]
+pub mod python;
+
+#[cfg(feature = "python")]
+pub use python::register;
+
 pub use error::MapError;
 pub use types::{
     op_codes, operation_name, AddressString, Imsi, IsdnAddressString, Lmsi, LocationInfoWithLmsi,

@@ -1,0 +1,36 @@
+# Maturin build config for the `gsm_map` wheel. The version is single-sourced from
+# Cargo.toml (`dynamic = ["version"]`), so PyPI and crates.io always ship the same
+# number. `extension-module` is the ONLY place that feature is enabled — never by
+# `cargo test`/`cargo clippy` (it un-links libpython and breaks Rust test binaries).
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "gsm_map"
+description = "Rust-backed GSM MAP (3GPP TS 29.002) SMS operation codec for Python"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Real Time Telecom B.V." }]
+keywords = ["gsm", "map", "ss7", "3gpp", "sms"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Telecommunications Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Free Threading :: 3 - Stable",
+    "Topic :: Communications",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/Real-Time-Telecom-B-V/gsm_map"
+Repository = "https://github.com/Real-Time-Telecom-B-V/gsm_map"
+
+[tool.maturin]
+# Mixed layout: compiled ext at `gsm_map._gsm_map`, pure-Python shim under python/.
+module-name = "gsm_map._gsm_map"
+python-source = "python"
+features = ["extension-module"]
