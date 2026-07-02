@@ -16,12 +16,12 @@ use gsm_map::operations::auth::{
     AuthenticationSetList, AuthenticationTriplet, SendAuthenticationInfoArg,
     SendAuthenticationInfoRes,
 };
+use gsm_map::operations::errors;
 use gsm_map::operations::location::{UpdateLocationArg, UpdateLocationRes};
 use gsm_map::operations::mo_forward_sm::MoForwardSmArg;
 use gsm_map::operations::mt_forward_sm::MtForwardSmArg;
 use gsm_map::operations::report_sm::{ReportSmDeliveryStatusArg, SmDeliveryOutcome};
 use gsm_map::operations::sri_sm::{RoutingInfoForSmArg, RoutingInfoForSmRes};
-use gsm_map::operations::{cap, errors};
 use gsm_map::types::*;
 
 // ── Synthetic fixtures (fictional `+1 555 01xx`; test IMSI `001/01`) ──
@@ -198,46 +198,6 @@ fn send_authentication_info_triplet_vectors() {
     }
 }
 
-// ── CAMEL / CAP call control ──
-
-#[test]
-fn cap_initial_dp_round_trips() {
-    let arg = cap::InitialDpArg {
-        service_key: 100.into(),
-        called_party_number: Some(vec![0x84, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9].into()),
-        calling_party_number: Some(vec![0x84, 0x51, 0x55, 0x51, 0x00].into()),
-        calling_partys_category: None,
-        original_called_party_id: None,
-        event_type_bcsm: Some(cap::EventTypeBcsm::CollectedInfo),
-        redirecting_party_id: None,
-        imsi: Some(IMSI.into()),
-        location_information: None,
-        call_reference_number: Some(vec![0x01, 0x02, 0x03, 0x04].into()),
-        msc_address: Some(MSC_NUM.into()),
-        called_party_bcd_number: None,
-        time_and_timezone: None,
-    };
-    let decoded: cap::InitialDpArg = rasn::ber::decode(&round_trip(&arg)).unwrap();
-    assert_eq!(
-        decoded.event_type_bcsm,
-        Some(cap::EventTypeBcsm::CollectedInfo)
-    );
-    assert_eq!(decoded.imsi, Some(oct(IMSI)));
-}
-
-#[test]
-fn cap_connect_routes_to_a_destination() {
-    let arg = cap::ConnectArg {
-        destination_routing_address: vec![vec![0x84, 0x51, 0x55, 0x10, 0x99].into()],
-        original_called_party_id: None,
-        calling_partys_category: None,
-        redirecting_party_id: None,
-        generic_numbers: None,
-    };
-    let decoded: cap::ConnectArg = rasn::ber::decode(&round_trip(&arg)).unwrap();
-    assert_eq!(decoded.destination_routing_address.len(), 1);
-}
-
 // ── Application contexts + TCAP dialogue portion ──
 
 #[test]
@@ -249,10 +209,6 @@ fn application_contexts_are_distinct_per_version() {
     assert_ne!(v2, v3);
     // v3 ends in ...20.3
     assert_eq!(v3.iter().copied().last(), Some(3));
-
-    let cap_v3 = ac::cap_gsmssf_scf_generic(ac::CAP_V3);
-    let cap_v4 = ac::cap_gsmssf_scf_generic(ac::CAP_V4);
-    assert_ne!(cap_v3, cap_v4);
 }
 
 #[test]

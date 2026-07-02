@@ -50,4 +50,3 @@ pub mod lcs;
 pub mod errors;
 
 // CAMEL Application Part (CAP)
-pub mod cap;
