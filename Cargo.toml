@@ -26,7 +26,7 @@ crate-type = ["cdylib", "rlib"]
 rasn = "0.28"
 hex = "0.4"
 thiserror = "2"
-tcap = { git = "https://github.com/Real-Time-Telecom-B-V/tcap", branch = "main" }
+tcap = "1"
 
 # Optional Python bindings (feature = "python"). Kept out of the default build so
 # `cargo add gsm_map` and crates.io consumers pull ZERO pyo3. pyo3 >= 0.28 defaults
@@ -50,7 +50,7 @@ criterion = "0.8"
 # The integration benchmark assembles a realistic SS7 stack: it wraps the MAP
 # operation in a TCAP Invoke/Begin and then an SCCP UDT. `tcap` is already a
 # runtime dep; `sccp` is a sibling crate consumed here only for the bench.
-sccp = { git = "https://github.com/Real-Time-Telecom-B-V/sccp", branch = "main" }
+sccp = "1"
 
 [[bench]]
 name = "codec"
