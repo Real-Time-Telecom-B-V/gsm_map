@@ -49,7 +49,7 @@ extension-module = ["python", "pyo3/extension-module"]
 criterion = "0.8"
 # The integration benchmark assembles a realistic SS7 stack: it wraps the MAP
 # operation in a TCAP Invoke/Begin and then an SCCP UDT. `tcap` is already a
-# runtime dep; `sccp` is a sibling RTT crate consumed here only for the bench.
+# runtime dep; `sccp` is a sibling crate consumed here only for the bench.
 sccp = { git = "https://github.com/Real-Time-Telecom-B-V/sccp", branch = "main" }
 
 [[bench]]

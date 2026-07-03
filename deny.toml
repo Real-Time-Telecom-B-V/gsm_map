@@ -44,7 +44,7 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # `tcap` (runtime) and `sccp` (dev-only, used by the full-stack MAP ▸ TCAP ▸ SCCP
-# integration bench) are sibling RTT crates consumed as git dependencies until
+# integration bench) are sibling crates consumed as git dependencies until
 # they are published to crates.io; allow those sources explicitly.
 allow-git = [
     "https://github.com/Real-Time-Telecom-B-V/tcap",
