@@ -15,8 +15,10 @@ pub struct MtForwardSmArg {
     pub sm_rp_oa: SmRpOa,
     /// SM-RP-UI (User Information — the SMS-DELIVER TPDU).
     pub sm_rp_ui: OctetString,
-    /// More messages to send flag.
-    pub more_messages_to_send: Option<bool>,
+    /// `moreMessagesToSend` — an ASN.1 `NULL OPTIONAL` (TS 29.002), not a boolean.
+    /// `Some(())` emits the NULL (more segments follow, e.g. a concatenated SMS);
+    /// `None` omits it (this is the last / only message).
+    pub more_messages_to_send: Option<()>,
 }
 
 /// MT-ForwardSM-Res — response parameters.

@@ -114,7 +114,7 @@ fn codec_cycle(iters: usize) {
         sm_rp_da: SmRpDa::Imsi(sample_imsi().into()),
         sm_rp_oa: SmRpOa::ServiceCentreAddressOa(sample_sc_addr().into()),
         sm_rp_ui: sample_tpdu().into(),
-        more_messages_to_send: Some(false),
+        more_messages_to_send: Some(()),
     };
 
     for _ in 0..iters {

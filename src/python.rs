@@ -505,7 +505,9 @@ impl PyMtForwardSmArg {
                 sm_rp_da: sm_rp_da.inner,
                 sm_rp_oa: sm_rp_oa.inner,
                 sm_rp_ui: sm_rp_ui.into(),
-                more_messages_to_send,
+                // moreMessagesToSend is an ASN.1 NULL: a truthy flag sets it
+                // present, everything else omits it.
+                more_messages_to_send: more_messages_to_send.filter(|&b| b).map(|_| ()),
             },
         }
     }
@@ -532,7 +534,8 @@ impl PyMtForwardSmArg {
 
     #[getter]
     fn more_messages_to_send(&self) -> Option<bool> {
-        self.inner.more_messages_to_send
+        // Present NULL -> True; absent -> None.
+        self.inner.more_messages_to_send.map(|()| true)
     }
 
     #[getter]
