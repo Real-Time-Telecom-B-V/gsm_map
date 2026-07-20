@@ -24,6 +24,8 @@ from ._gsm_map import (
     DELIVERY_OUTCOME_ABSENT_SUBSCRIBER,
     DELIVERY_OUTCOME_MEMORY_CAPACITY_EXCEEDED,
     DELIVERY_OUTCOME_SUCCESSFUL_TRANSFER,
+    NATURE_INTERNATIONAL,
+    NATURE_NATIONAL,
     OP_ALERT_SERVICE_CENTRE,
     OP_INFORM_SERVICE_CENTRE,
     OP_MO_FORWARD_SM,
@@ -33,6 +35,8 @@ from ._gsm_map import (
     OP_SEND_AUTHENTICATION_INFO,
     OP_SEND_ROUTING_INFO_FOR_SM,
     OP_UPDATE_LOCATION,
+    PLAN_ISDN,
+    PLAN_LAND_MOBILE,
     LocationInfoWithLmsi,
     MapError,
     MoForwardSmArg,
@@ -44,6 +48,9 @@ from ._gsm_map import (
     SmRpDa,
     SmRpOa,
     UpdateLocationArg,
+    imsi,
+    international_e164,
+    isdn_address_string,
     op_name,
 )
 
@@ -69,6 +76,14 @@ __all__ = [
     # errors + helpers
     "MapError",
     "op_name",
+    # address / identity encoders
+    "isdn_address_string",
+    "international_e164",
+    "imsi",
+    "NATURE_INTERNATIONAL",
+    "NATURE_NATIONAL",
+    "PLAN_ISDN",
+    "PLAN_LAND_MOBILE",
     # operation codes
     "OP_SEND_ROUTING_INFO_FOR_SM",
     "OP_MO_FORWARD_SM",

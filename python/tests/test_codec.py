@@ -153,3 +153,21 @@ def test_full_stack_interop_shape() -> None:
     param = arg.encode()
     again = gsm_map.RoutingInfoForSmArg.decode(param)
     assert again.encode() == param
+
+
+def test_address_encoders() -> None:
+    # The encoders reproduce the hand-written TBCD constant above.
+    assert gsm_map.international_e164("15550100999") == MSISDN
+    assert gsm_map.international_e164("15550190") == bytes([0x91, 0x51, 0x55, 0x10, 0x09])
+    # nature/plan default to international E.164.
+    assert gsm_map.isdn_address_string("15550190") == gsm_map.international_e164("15550190")
+    # national (significant) number → leading 0xA1.
+    assert gsm_map.isdn_address_string(
+        "15550190", gsm_map.NATURE_NATIONAL, gsm_map.PLAN_ISDN
+    ) == bytes([0xA1, 0x51, 0x55, 0x10, 0x09])
+    # IMSI is a bare TBCD string, no leading octet.
+    assert gsm_map.imsi("001010123456789") == bytes(
+        [0x00, 0x01, 0x01, 0x21, 0x43, 0x65, 0x87, 0xF9]
+    )
+    with pytest.raises(gsm_map.MapError):
+        gsm_map.international_e164("1555x190")

@@ -763,6 +763,36 @@ fn op_name(op_code: i64) -> &'static str {
     operation_name(op_code)
 }
 
+/// Encode an ISDN-AddressString / AddressString from a digit string: the
+/// nature-of-address / numbering-plan octet then TBCD digits.
+#[pyfunction]
+#[pyo3(signature = (digits, nature=crate::address::NATURE_INTERNATIONAL, plan=crate::address::PLAN_ISDN))]
+fn isdn_address_string(
+    py: Python<'_>,
+    digits: &str,
+    nature: u8,
+    plan: u8,
+) -> PyResult<Py<PyBytes>> {
+    let bytes = crate::address::isdn_address_string(digits, nature, plan)
+        .map_err(|e| MapError::new_err(e.to_string()))?;
+    Ok(PyBytes::new(py, &bytes).unbind())
+}
+
+/// Encode an international E.164 ISDN number (leading octet `0x91`).
+#[pyfunction]
+fn international_e164(py: Python<'_>, digits: &str) -> PyResult<Py<PyBytes>> {
+    let bytes =
+        crate::address::international_e164(digits).map_err(|e| MapError::new_err(e.to_string()))?;
+    Ok(PyBytes::new(py, &bytes).unbind())
+}
+
+/// Encode an IMSI as a bare TBCD-STRING (no leading octet).
+#[pyfunction]
+fn imsi(py: Python<'_>, digits: &str) -> PyResult<Py<PyBytes>> {
+    let bytes = crate::address::imsi(digits).map_err(|e| MapError::new_err(e.to_string()))?;
+    Ok(PyBytes::new(py, &bytes).unbind())
+}
+
 // ── Module wiring ───────────────────────────────────────────────────────────
 fn add_contents(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("MapError", m.py().get_type::<MapError>())?;
@@ -784,6 +814,15 @@ fn add_contents(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySendAuthenticationInfoArg>()?;
 
     m.add_function(wrap_pyfunction!(op_name, m)?)?;
+
+    // Address / identity encoders (digit string → TBCD OCTET STRING).
+    m.add_function(wrap_pyfunction!(isdn_address_string, m)?)?;
+    m.add_function(wrap_pyfunction!(international_e164, m)?)?;
+    m.add_function(wrap_pyfunction!(imsi, m)?)?;
+    m.add("NATURE_INTERNATIONAL", crate::address::NATURE_INTERNATIONAL)?;
+    m.add("NATURE_NATIONAL", crate::address::NATURE_NATIONAL)?;
+    m.add("PLAN_ISDN", crate::address::PLAN_ISDN)?;
+    m.add("PLAN_LAND_MOBILE", crate::address::PLAN_LAND_MOBILE)?;
 
     // Operation-code registry (the SMS set + the two extra ops we expose).
     m.add(

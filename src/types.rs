@@ -6,9 +6,9 @@ use rasn::prelude::*;
 /// Encoded as TBCD string in an OCTET STRING (3-8 bytes).
 pub type Imsi = OctetString;
 
-/// ISDN-AddressString — phone number in TBCD encoding.
-/// Byte 0: NPI (bits 7-4) + TON (bits 3-0)
-/// Bytes 1+: TBCD-encoded digits
+/// ISDN-AddressString — a phone number as an OCTET STRING: a leading octet
+/// (ext bit, 3-bit nature of address, 4-bit numbering plan) then TBCD digits.
+/// Build one from a digit string with [`crate::address`].
 pub type IsdnAddressString = OctetString;
 
 /// AddressString — same format as ISDN-AddressString.

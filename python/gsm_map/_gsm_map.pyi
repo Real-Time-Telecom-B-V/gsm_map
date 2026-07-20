@@ -18,11 +18,29 @@ DELIVERY_OUTCOME_MEMORY_CAPACITY_EXCEEDED: int
 DELIVERY_OUTCOME_ABSENT_SUBSCRIBER: int
 DELIVERY_OUTCOME_SUCCESSFUL_TRANSFER: int
 
+# ── Address / identity nature-of-address + numbering-plan values ──────────────
+NATURE_INTERNATIONAL: int
+NATURE_NATIONAL: int
+PLAN_ISDN: int
+PLAN_LAND_MOBILE: int
+
 class MapError(Exception):
     """GSM MAP protocol / BER codec error (3GPP TS 29.002)."""
 
 def op_name(op_code: int) -> str:
     """The MAP operation name for an operation code (e.g. 45 -> 'sendRoutingInfoForSM')."""
+
+def isdn_address_string(
+    digits: str, nature: int = ..., plan: int = ...
+) -> bytes:
+    """Encode an ISDN-AddressString / AddressString: the nature-of-address /
+    numbering-plan octet then TBCD digits. Defaults to international E.164."""
+
+def international_e164(digits: str) -> bytes:
+    """Encode an international E.164 ISDN number (leading octet 0x91)."""
+
+def imsi(digits: str) -> bytes:
+    """Encode an IMSI as a bare TBCD-STRING (no leading octet)."""
 
 class SmRpDa:
     """SM-RP-DA — SMS Relay Protocol Destination Address (a CHOICE).

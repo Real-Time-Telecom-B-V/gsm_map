@@ -1,6 +1,6 @@
 [package]
 name = "gsm_map"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 rust-version = "1.80"
 description = "GSM MAP (Mobile Application Part) operations per 3GPP TS 29.002 — SMS (MO/MT-ForwardSM, SRI-for-SM), mobility, authentication, USSD, supplementary services — as BER-codable ASN.1 types, with optional Rust-backed Python bindings"
@@ -27,6 +27,9 @@ rasn = "0.28"
 hex = "0.4"
 thiserror = "2"
 tcap = "1"
+# `address` reuses the canonical TBCD digit packing rather than re-implement the
+# semi-octet swap. sccp is a lean sibling (only `thiserror`), so this stays cheap.
+sccp = "1"
 
 # Optional Python bindings (feature = "python"). Kept out of the default build so
 # `cargo add gsm_map` and crates.io consumers pull ZERO pyo3. pyo3 >= 0.28 defaults
@@ -47,10 +50,8 @@ extension-module = ["python", "pyo3/extension-module"]
 [dev-dependencies]
 # criterion drives the codec + full-stack integration benchmarks.
 criterion = "0.8"
-# The integration benchmark assembles a realistic SS7 stack: it wraps the MAP
-# operation in a TCAP Invoke/Begin and then an SCCP UDT. `tcap` is already a
-# runtime dep; `sccp` is a sibling crate consumed here only for the bench.
-sccp = "1"
+# The integration benchmark assembles a realistic SS7 stack (MAP op → TCAP
+# Invoke/Begin → SCCP UDT); `tcap` and `sccp` are already runtime deps.
 
 [[bench]]
 name = "codec"
