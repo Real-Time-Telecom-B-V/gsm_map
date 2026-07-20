@@ -14,6 +14,7 @@
 //!
 //! Uses `rasn` for ASN.1 BER encoding/decoding.
 
+pub mod address;
 pub mod application_context;
 pub mod dialogue;
 pub mod error;

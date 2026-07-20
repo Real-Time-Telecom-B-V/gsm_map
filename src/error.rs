@@ -15,6 +15,9 @@ pub enum MapError {
 
     #[error("missing field: {0}")]
     MissingField(String),
+
+    #[error("invalid address: {0}")]
+    InvalidAddress(String),
 }
 
 impl From<rasn::error::DecodeError> for MapError {
