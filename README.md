@@ -181,6 +181,13 @@ pipes them through `text2pcap -l 142` (the SS7 SCCP link type) and asserts that
 the dissector names back every member of every frame. It needs `tshark` and
 `text2pcap`, so it runs in CI rather than under `cargo test`.
 
+The dissector is only a valid reference if its compiled ASN.1 is at least as new
+as the spec revision the vectors target, so the script requires **Wireshark
+4.6+** and refuses to run on anything older. 4.2 spells two operations
+differently, does not know the `resetContext-v3` context, and rejects the newer
+members of `sendRoutingInfo`, `lcs-MOLR` and `lcs-LocationNotification` — gaps in
+the reference, indistinguishable in the output from real encoder bugs.
+
 ## Development
 
 ```bash
@@ -192,7 +199,7 @@ cargo clippy --features python --lib -- -D warnings
 cargo bench --no-run                            # incl. the integration bench
 cargo run --release --example leak_check        # prints PASS
 cargo deny check
-./scripts/wireshark_check.sh                    # needs tshark + text2pcap
+./scripts/wireshark_check.sh                    # needs tshark 4.6+ + text2pcap
 
 # Python wheel
 python -m venv .venv && . .venv/bin/activate

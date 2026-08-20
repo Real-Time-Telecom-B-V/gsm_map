@@ -14,9 +14,21 @@
 # The example also prints, per frame, how many top-level members it set — this
 # script asserts the dissector names back exactly that many, with no BER errors.
 #
-# Needs tshark + text2pcap (Wireshark >= 4.x) and python3.
+# Needs tshark + text2pcap and python3.
+#
+# Wireshark carries a compiled copy of the TS 29.002 ASN.1, so the dissector is
+# only a valid oracle if that copy is at least as new as the spec revision the
+# vectors target. It is not: 4.2 renders mo-ForwardSM where 4.6 renders
+# mo-forwardSM, does not know the resetContext-v3 context, and rejects the newer
+# members of sendRoutingInfo, lcs-MOLR and lcs-LocationNotification with "this
+# field lies beyond the end of the known sequence definition". Those are gaps in
+# the oracle, not in the encoder, but they are indistinguishable from real
+# encoder bugs in the output, so refuse to run rather than report either one.
 
 set -euo pipefail
+
+# Lowest Wireshark whose gsm_map dissector knows every member the vectors assert.
+WS_MINIMUM=4.6
 cd "$(dirname "$0")/.."
 
 for tool in text2pcap tshark python3; do
@@ -35,7 +47,19 @@ mkdir -p "$WIRESHARK_CONFIG_DIR"
 echo "[*] emitting vectors..."
 cargo run --quiet --example wireshark_vectors >"$work/vectors.hex" 2>"$work/expected.tsv"
 
-echo "[*] $(tshark --version 2>/dev/null | head -1)"
+banner="$(tshark --version 2>/dev/null | head -1)"
+echo "[*] $banner"
+ws_version="$(sed -n 's/^TShark (Wireshark) \([0-9]*\.[0-9]*\).*/\1/p' <<<"$banner")"
+if [ -z "$ws_version" ]; then
+    echo "[!] could not read a version out of: $banner" >&2
+    exit 1
+fi
+if [ "$(printf '%s\n' "$WS_MINIMUM" "$ws_version" | sort -V | head -1)" != "$WS_MINIMUM" ]; then
+    echo "[!] this check needs Wireshark >= $WS_MINIMUM as its reference decoder, found $ws_version." >&2
+    echo "[!] An older dissector predicts the wrong member set and would fail frames the" >&2
+    echo "[!] encoder gets right. Install a newer Wireshark rather than relaxing this." >&2
+    exit 1
+fi
 
 echo "[*] text2pcap -l 142 (SS7 SCCP)..."
 if ! text2pcap -l 142 "$work/vectors.hex" "$work/vectors.pcap" >"$work/text2pcap.log" 2>&1; then

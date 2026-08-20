@@ -23,7 +23,11 @@ env:
 
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`, because the Wireshark cross-check below needs a
+    # dissector whose compiled TS 29.002 is at least as new as the spec revision the
+    # vectors target. 24.04 ships tshark 4.2.2, which predates several members the
+    # vectors assert and fails frames the encoder gets right; 26.04 ships 4.6.4.
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -68,7 +72,8 @@ jobs:
       # A BER round-trip cannot catch a tag that is wrong in both directions, so
       # the vectors also go past an independent decoder. tshark only reads a file
       # here, so it needs no capture privileges; the debconf answer just keeps
-      # the install non-interactive.
+      # the install non-interactive. The script hard-fails below Wireshark 4.6
+      # rather than reporting an old dissector's gaps as encoder bugs.
       - name: Install Wireshark CLI tools
         run: |
           echo "wireshark-common wireshark-common/install-setuid boolean false" \
