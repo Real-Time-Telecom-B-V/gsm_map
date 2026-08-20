@@ -1,34 +1,43 @@
 //! informServiceCentre (operation code 63) — 3GPP TS 29.002.
 //!
-//! Sent by the HLR to the SMS-SC to provide information about the
-//! subscriber's status (e.g., MW (Message Waiting) data).
+//! The HLR tells the SMS-GMSC, inside the SRI-SM dialogue, what it already knows
+//! about the subscriber's message-waiting state, so the service centre does not
+//! attempt a delivery the HLR knows will fail.
+//!
+//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
+//! unmodelled member is fatal rather than merely absent.
 
 use rasn::prelude::*;
 
-use crate::types::IsdnAddressString;
-
-/// MW-Status — Message Waiting status flags (encoded as OCTET STRING, 1 byte).
-/// bit 0: SC address not included
-/// bit 1: MNRF (Mobile Not Reachable Flag) set
-/// bit 2: MCEF (Memory Capacity Exceeded Flag) set
-/// bit 3: MNRG (Mobile Not Reachable for GPRS) set
-pub type MwStatus = OctetString;
-
-/// Create an MW-Status byte from individual flags.
-pub fn mw_status(sc_addr_not_included: bool, mnrf: bool, mcef: bool, mnrg: bool) -> MwStatus {
-    let byte = (sc_addr_not_included as u8)
-        | ((mnrf as u8) << 1)
-        | ((mcef as u8) << 2)
-        | ((mnrg as u8) << 3);
-    vec![byte].into()
-}
+use crate::types::{AbsentSubscriberDiagnosticSm, ExtensionContainer, IsdnAddressString, MwStatus};
 
 /// InformServiceCentreArg — request parameters.
-#[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
+///
+/// ```asn1
+/// InformServiceCentreArg ::= SEQUENCE {
+///     storedMSISDN                                ISDN-AddressString OPTIONAL,
+///     mw-Status                                   MW-Status OPTIONAL,
+///     extensionContainer                          ExtensionContainer OPTIONAL,
+///     ...,
+///     absentSubscriberDiagnosticSM                AbsentSubscriberDiagnosticSM OPTIONAL,
+///     additionalAbsentSubscriberDiagnosticSM  [0] AbsentSubscriberDiagnosticSM OPTIONAL,
+///     smsf3gppAbsentSubscriberDiagnosticSM    [1] AbsentSubscriberDiagnosticSM OPTIONAL,
+///     smsfNon3gppAbsentSubscriberDiagnosticSM [2] AbsentSubscriberDiagnosticSM OPTIONAL }
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct InformServiceCentreArg {
-    /// Stored MSISDN (if different from original).
+    /// Stored MSISDN (if different from the one the service centre used).
     pub stored_msisdn: Option<IsdnAddressString>,
-    /// Message waiting data status.
-    #[rasn(tag(context, 0))]
+    /// Message-waiting flags. Build with
+    /// [`MwStatusFlags::to_bits`](crate::types::MwStatusFlags::to_bits) — this is
+    /// a BIT STRING numbered from the most significant bit, not a packed byte.
     pub mw_status: Option<MwStatus>,
+    pub extension_container: Option<ExtensionContainer>,
+    pub absent_subscriber_diagnostic_sm: Option<AbsentSubscriberDiagnosticSm>,
+    #[rasn(tag(context, 0))]
+    pub additional_absent_subscriber_diagnostic_sm: Option<AbsentSubscriberDiagnosticSm>,
+    #[rasn(tag(context, 1))]
+    pub smsf_3gpp_absent_subscriber_diagnostic_sm: Option<AbsentSubscriberDiagnosticSm>,
+    #[rasn(tag(context, 2))]
+    pub smsf_non_3gpp_absent_subscriber_diagnostic_sm: Option<AbsentSubscriberDiagnosticSm>,
 }

@@ -41,43 +41,35 @@ fn sample_tpdu() -> Vec<u8> {
 }
 
 fn sri_sm_arg() -> RoutingInfoForSmArg {
-    RoutingInfoForSmArg {
-        msisdn: sample_msisdn().into(),
-        sm_rp_pri: true,
-        service_centre_address: sample_sc_addr().into(),
-        gprs_support_indicator: None,
-        sm_rp_mti: None,
-        sm_rp_smea: None,
-    }
+    RoutingInfoForSmArg::new(sample_msisdn().into(), true, sample_sc_addr().into())
 }
 
 fn sri_sm_res() -> RoutingInfoForSmRes {
-    RoutingInfoForSmRes {
-        imsi: sample_imsi().into(),
-        location_info_with_lmsi: LocationInfoWithLmsi {
-            network_node_number: vec![0x91, 0x51, 0x55, 0x10, 0x12, 0x34, 0x56].into(),
+    RoutingInfoForSmRes::new(
+        sample_imsi().into(),
+        LocationInfoWithLmsi {
             lmsi: Some(vec![0x00, 0x00, 0x00, 0x01].into()),
-            gprs_node_indicator: None,
-            additional_number: None,
+            ..LocationInfoWithLmsi::new(vec![0x91, 0x51, 0x55, 0x10, 0x12, 0x34, 0x56].into())
         },
-    }
+    )
 }
 
 fn mo_forward_sm() -> MoForwardSmArg {
-    MoForwardSmArg {
-        sm_rp_da: SmRpDa::ServiceCentreAddressDa(sample_sc_addr().into()),
-        sm_rp_oa: SmRpOa::MsIsdn(sample_msisdn().into()),
-        sm_rp_ui: sample_tpdu().into(),
-        imsi: None,
-    }
+    MoForwardSmArg::new(
+        SmRpDa::ServiceCentreAddressDa(sample_sc_addr().into()),
+        SmRpOa::MsIsdn(sample_msisdn().into()),
+        sample_tpdu().into(),
+    )
 }
 
 fn mt_forward_sm() -> MtForwardSmArg {
     MtForwardSmArg {
-        sm_rp_da: SmRpDa::Imsi(sample_imsi().into()),
-        sm_rp_oa: SmRpOa::ServiceCentreAddressOa(sample_sc_addr().into()),
-        sm_rp_ui: sample_tpdu().into(),
         more_messages_to_send: Some(()),
+        ..MtForwardSmArg::new(
+            SmRpDa::Imsi(sample_imsi().into()),
+            SmRpOa::ServiceCentreAddressOa(sample_sc_addr().into()),
+            sample_tpdu().into(),
+        )
     }
 }
 

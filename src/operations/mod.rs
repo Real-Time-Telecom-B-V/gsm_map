@@ -46,7 +46,12 @@ pub mod imei;
 // Location services (LCS)
 pub mod lcs;
 
+// Notifications to a gsmSCF (noteSubscriberDataModified, ss-InvocationNotification,
+// noteMM-Event)
+pub mod notification;
+
+// Group call / broadcast call (VGCS, VBS)
+pub mod group_call;
+
 // MAP error codes
 pub mod errors;
-
-// CAMEL Application Part (CAP)

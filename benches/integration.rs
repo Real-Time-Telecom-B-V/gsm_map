@@ -42,14 +42,7 @@ fn sample_sc_addr() -> Vec<u8> {
 }
 
 fn sri_sm_arg() -> RoutingInfoForSmArg {
-    RoutingInfoForSmArg {
-        msisdn: sample_msisdn().into(),
-        sm_rp_pri: true,
-        service_centre_address: sample_sc_addr().into(),
-        gprs_support_indicator: None,
-        sm_rp_mti: None,
-        sm_rp_smea: None,
-    }
+    RoutingInfoForSmArg::new(sample_msisdn().into(), true, sample_sc_addr().into())
 }
 
 fn mo_forward_sm_arg() -> MoForwardSmArg {
@@ -57,12 +50,11 @@ fn mo_forward_sm_arg() -> MoForwardSmArg {
         0x04, 0x0B, 0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9, 0x00, 0x00,
     ];
     ui.extend_from_slice(&[0xAB; 19]);
-    MoForwardSmArg {
-        sm_rp_da: SmRpDa::ServiceCentreAddressDa(sample_sc_addr().into()),
-        sm_rp_oa: SmRpOa::MsIsdn(sample_msisdn().into()),
-        sm_rp_ui: ui.into(),
-        imsi: None,
-    }
+    MoForwardSmArg::new(
+        SmRpDa::ServiceCentreAddressDa(sample_sc_addr().into()),
+        SmRpOa::MsIsdn(sample_msisdn().into()),
+        ui.into(),
+    )
 }
 
 // ── SCCP addressing (synthetic global titles) ───────────────────────────────

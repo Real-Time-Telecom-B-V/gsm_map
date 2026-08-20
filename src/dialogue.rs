@@ -1,196 +1,174 @@
-//! MAP Dialogue helpers — builds the TCAP dialogue portion with application context.
+//! TCAP dialogue portions for MAP — thin helpers over [`tcap::DialoguePortion`].
 //!
-//! Wireshark needs the dialogue portion to decode MAP parameters correctly.
-//! The dialogue portion contains an AARQ-apdu (for Begin) or AARE-apdu (for End)
-//! with the application-context-name OID.
+//! A MAP dialogue announces its application context in the TCAP dialogue portion
+//! so the peer knows which ASN.1 module the components belong to: an **AARQ** on
+//! the `Begin`, an **AARE** on the `End`/`Continue`, an **ABRT** if either side
+//! walks away. The `tcap` crate already models all three and can parse them
+//! back, so this module only adds the MAP-shaped convenience: take an
+//! [`application_context`](crate::application_context) OID, hand back a portion
+//! ready to drop into a message.
+//!
+//! ```no_run
+//! use gsm_map::{application_context as ac, dialogue};
+//!
+//! let portion = dialogue::begin(&ac::short_msg_gateway_context(ac::V3));
+//! // ... put `portion` in a tcap::Begin, send it, and on the answer:
+//! # let answer = portion;
+//! if let Some(pdu) = dialogue::parse(&answer) {
+//!     println!("{pdu:?}");
+//! }
+//! ```
 
 use rasn::types::ObjectIdentifier;
 
-/// OID for dialogue-as-id: {itu-t recommendation q 773 as(1) dialogue-as(1) version1(1)}
-/// = 0.0.17.773.1.1.1
-const DIALOGUE_AS_ID: &[u32] = &[0, 0, 17, 773, 1, 1, 1];
+#[doc(inline)]
+pub use tcap::dialogue::{
+    AbortSource, AssociateResult, AssociateSourceDiagnostic, DialoguePdu, DialoguePortion,
+};
 
-/// Build the EXTERNAL content for a TCAP Begin dialogue portion (AARQ-apdu).
-///
-/// Returns BER-encoded EXTERNAL bytes (tag 0x28) containing:
-/// - direct-reference: dialogue-as-id OID
-/// - encoding: single-ASN1-type [0] AARQ-apdu with application-context-name
-///
-/// Use with `tcap::DialoguePortion { external: Any::new(bytes) }`.
-pub fn build_begin_dialogue(ac_oid: &ObjectIdentifier) -> Vec<u8> {
-    let ac_oid_bytes = encode_oid(ac_oid);
-
-    // [1] EXPLICIT wrapping the application-context-name OID
-    let mut ac_name_tlv = vec![0xA1]; // CONTEXT 1 CONSTRUCTED
-    encode_length(&mut ac_name_tlv, ac_oid_bytes.len());
-    ac_name_tlv.extend_from_slice(&ac_oid_bytes);
-
-    // AARQ-apdu content: just application-context-name (protocol-version is DEFAULT)
-    let aarq_content = ac_name_tlv;
-
-    // [APPLICATION 0] IMPLICIT SEQUENCE = tag 0x60
-    let mut aarq = vec![0x60];
-    encode_length(&mut aarq, aarq_content.len());
-    aarq.extend_from_slice(&aarq_content);
-
-    // Wrap in [0] EXPLICIT for EXTERNAL.encoding single-ASN1-type
-    let mut single_asn1 = vec![0xA0];
-    encode_length(&mut single_asn1, aarq.len());
-    single_asn1.extend_from_slice(&aarq);
-
-    // Build EXTERNAL content:
-    //   direct-reference: dialogue-as-id OID
-    //   encoding: single-ASN1-type [0] AARQ
-    let direct_ref_bytes = encode_oid_raw(DIALOGUE_AS_ID);
-    let mut direct_ref_tlv = vec![0x06]; // OID tag
-    encode_length(&mut direct_ref_tlv, direct_ref_bytes.len());
-    direct_ref_tlv.extend_from_slice(&direct_ref_bytes);
-
-    let mut external_content = Vec::new();
-    external_content.extend_from_slice(&direct_ref_tlv);
-    external_content.extend_from_slice(&single_asn1);
-
-    // EXTERNAL: [UNIVERSAL 8] CONSTRUCTED = 0x28
-    let mut external = vec![0x28];
-    encode_length(&mut external, external_content.len());
-    external.extend_from_slice(&external_content);
-
-    external
+/// The **AARQ** portion for a `Begin`: "let's talk `ac`".
+pub fn begin(ac: &ObjectIdentifier) -> DialoguePortion {
+    DialoguePortion::aarq(ac)
 }
 
-/// Build the EXTERNAL content for a TCAP End dialogue portion (AARE-apdu).
+/// The **AARE** portion for an `End` or `Continue` that accepts the dialogue —
+/// result `accepted(0)`, diagnostic `dialogue-service-user null(0)`.
+pub fn end_accept(ac: &ObjectIdentifier) -> DialoguePortion {
+    DialoguePortion::aare_accept(ac)
+}
+
+/// The **AARE** portion that refuses the dialogue.
 ///
-/// Returns BER-encoded EXTERNAL bytes (tag 0x28).
-pub fn build_end_dialogue(ac_oid: &ObjectIdentifier) -> Vec<u8> {
-    let ac_oid_bytes = encode_oid(ac_oid);
-
-    // [1] EXPLICIT wrapping the OID
-    let mut ac_name_tlv = vec![0xA1];
-    encode_length(&mut ac_name_tlv, ac_oid_bytes.len());
-    ac_name_tlv.extend_from_slice(&ac_oid_bytes);
-
-    // result [2] EXPLICIT: associate-result = accepted (0)
-    let result_tlv = vec![0xA2, 0x03, 0x02, 0x01, 0x00];
-
-    // result-source-diagnostic [3] EXPLICIT
-    // dialogue-service-user [1] = null (0)
-    let diag_tlv = vec![0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00];
-
-    // AARE-apdu content
-    let mut aare_content = Vec::new();
-    aare_content.extend_from_slice(&ac_name_tlv);
-    aare_content.extend_from_slice(&result_tlv);
-    aare_content.extend_from_slice(&diag_tlv);
-
-    // [APPLICATION 1] IMPLICIT SEQUENCE = tag 0x61
-    let mut aare = vec![0x61];
-    encode_length(&mut aare, aare_content.len());
-    aare.extend_from_slice(&aare_content);
-
-    // Wrap in [0] EXPLICIT for EXTERNAL.encoding single-ASN1-type
-    let mut single_asn1 = vec![0xA0];
-    encode_length(&mut single_asn1, aare.len());
-    single_asn1.extend_from_slice(&aare);
-
-    // Build EXTERNAL content
-    let direct_ref_bytes = encode_oid_raw(DIALOGUE_AS_ID);
-    let mut direct_ref_tlv = vec![0x06];
-    encode_length(&mut direct_ref_tlv, direct_ref_bytes.len());
-    direct_ref_tlv.extend_from_slice(&direct_ref_bytes);
-
-    let mut external_content = Vec::new();
-    external_content.extend_from_slice(&direct_ref_tlv);
-    external_content.extend_from_slice(&single_asn1);
-
-    // EXTERNAL: [UNIVERSAL 8] CONSTRUCTED = 0x28
-    let mut external = vec![0x28];
-    encode_length(&mut external, external_content.len());
-    external.extend_from_slice(&external_content);
-
-    external
+/// `reject-permanent` tells the peer not to retry; `reject-transient` invites a
+/// retry. The diagnostic says who decided and why — for a MAP peer that does not
+/// support the offered context, that is
+/// `DialogueServiceUser(1)` (`no-reason-given`) or `DialogueServiceUser(2)`
+/// (`application-context-name-not-supported`).
+pub fn end_reject(
+    ac: &ObjectIdentifier,
+    result: AssociateResult,
+    diagnostic: AssociateSourceDiagnostic,
+) -> DialoguePortion {
+    DialoguePortion::from_pdu(&DialoguePdu::Aare {
+        protocol_version: Default::default(),
+        application_context_name: ac.clone(),
+        result,
+        result_source_diagnostic: diagnostic,
+        user_information: None,
+    })
 }
 
-/// Encode an OID as a full TLV (tag 0x06 + length + value).
-fn encode_oid(oid: &ObjectIdentifier) -> Vec<u8> {
-    let components: Vec<u32> = oid.iter().copied().collect();
-    let raw = encode_oid_raw(&components);
-    let mut tlv = vec![0x06];
-    encode_length(&mut tlv, raw.len());
-    tlv.extend_from_slice(&raw);
-    tlv
+/// The **ABRT** portion for a TCAP `Abort`.
+pub fn abort(source: AbortSource) -> DialoguePortion {
+    DialoguePortion::abrt(source)
 }
 
-/// Encode OID components to raw bytes (no tag/length).
-fn encode_oid_raw(components: &[u32]) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    if components.len() >= 2 {
-        bytes.push((components[0] * 40 + components[1]) as u8);
-        for &c in &components[2..] {
-            encode_oid_component(&mut bytes, c);
+/// Parse a dialogue portion back into a typed PDU.
+///
+/// `None` if the portion is not a well-formed AARQ / AARE / ABRT — an opaque or
+/// structured-dialogue portion, say. A peer that sends one has not refused the
+/// dialogue, so treat `None` as "not something this layer models", not as an
+/// error.
+pub fn parse(portion: &DialoguePortion) -> Option<DialoguePdu> {
+    portion.dialogue_pdu()
+}
+
+/// The application context a portion names, if it is an AARQ or an AARE.
+///
+/// An ABRT carries no context, and neither does a portion this layer cannot
+/// parse; both give `None`.
+pub fn application_context(portion: &DialoguePortion) -> Option<ObjectIdentifier> {
+    match parse(portion)? {
+        DialoguePdu::Aarq {
+            application_context_name,
+            ..
         }
-    }
-    bytes
-}
-
-fn encode_oid_component(buf: &mut Vec<u8>, value: u32) {
-    if value < 128 {
-        buf.push(value as u8);
-    } else {
-        let mut temp = Vec::new();
-        let mut v = value;
-        temp.push((v & 0x7F) as u8);
-        v >>= 7;
-        while v > 0 {
-            temp.push((v & 0x7F) as u8 | 0x80);
-            v >>= 7;
-        }
-        temp.reverse();
-        buf.extend_from_slice(&temp);
-    }
-}
-
-fn encode_length(buf: &mut Vec<u8>, len: usize) {
-    if len < 128 {
-        buf.push(len as u8);
-    } else if len < 256 {
-        buf.push(0x81);
-        buf.push(len as u8);
-    } else {
-        buf.push(0x82);
-        buf.push((len >> 8) as u8);
-        buf.push((len & 0xFF) as u8);
+        | DialoguePdu::Aare {
+            application_context_name,
+            ..
+        } => Some(application_context_name),
+        DialoguePdu::Abrt { .. } => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application_context;
+    use crate::application_context as ac;
 
     #[test]
-    fn begin_dialogue_has_correct_tags() {
-        let bytes = build_begin_dialogue(&application_context::short_msg_gateway_context(
-            application_context::V3,
-        ));
-
-        // Should start with 0x28 (EXTERNAL = UNIVERSAL 8 CONSTRUCTED)
-        assert_eq!(bytes[0], 0x28, "Expected EXTERNAL tag");
-
-        // Should contain OID tag 0x06 (dialogue-as-id)
-        assert!(bytes.contains(&0x06), "Should contain OID tag");
-
-        // Should contain AARQ tag 0x60 (APPLICATION 0)
-        assert!(bytes.contains(&0x60), "Should contain AARQ tag");
+    fn aarq_round_trips_through_the_portion() {
+        let oid = ac::short_msg_gateway_context(ac::V3);
+        let portion = begin(&oid);
+        match parse(&portion).expect("AARQ parses") {
+            DialoguePdu::Aarq { .. } => {}
+            other => panic!("expected AARQ, got {other:?}"),
+        }
+        assert_eq!(application_context(&portion), Some(oid));
     }
 
     #[test]
-    fn end_dialogue_has_correct_tags() {
-        let bytes = build_end_dialogue(&application_context::short_msg_gateway_context(
-            application_context::V3,
-        ));
+    fn aare_carries_the_result_and_diagnostic() {
+        let oid = ac::any_time_info_handling_context(ac::V3);
+        match parse(&end_accept(&oid)).expect("AARE parses") {
+            DialoguePdu::Aare {
+                result,
+                result_source_diagnostic,
+                ..
+            } => {
+                assert_eq!(result, AssociateResult::Accepted);
+                assert_eq!(
+                    result_source_diagnostic,
+                    AssociateSourceDiagnostic::DialogueServiceUser(0)
+                );
+            }
+            other => panic!("expected AARE, got {other:?}"),
+        }
 
-        // Should start with 0x28 (EXTERNAL)
-        assert_eq!(bytes[0], 0x28, "Expected EXTERNAL tag");
-        assert!(bytes.contains(&0x61), "Should contain AARE tag");
+        // application-context-name-not-supported: the answer an HLR gives an
+        // IP-SM-GW that offered a context it does not implement.
+        let refused = end_reject(
+            &oid,
+            AssociateResult::RejectedPermanent,
+            AssociateSourceDiagnostic::DialogueServiceUser(2),
+        );
+        match parse(&refused).expect("AARE parses") {
+            DialoguePdu::Aare {
+                result,
+                result_source_diagnostic,
+                ..
+            } => {
+                assert_eq!(result, AssociateResult::RejectedPermanent);
+                assert_eq!(
+                    result_source_diagnostic,
+                    AssociateSourceDiagnostic::DialogueServiceUser(2)
+                );
+            }
+            other => panic!("expected AARE, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn abrt_round_trips_and_names_no_context() {
+        for source in [
+            AbortSource::DialogueServiceUser,
+            AbortSource::DialogueServiceProvider,
+        ] {
+            let portion = abort(source);
+            match parse(&portion).expect("ABRT parses") {
+                DialoguePdu::Abrt { abort_source, .. } => assert_eq!(abort_source, source),
+                other => panic!("expected ABRT, got {other:?}"),
+            }
+            assert_eq!(application_context(&portion), None);
+        }
+    }
+
+    #[test]
+    fn a_portion_this_layer_does_not_model_parses_to_none() {
+        let portion = DialoguePortion {
+            external: rasn::types::Any::new(vec![0x28, 0x02, 0x05, 0x00]),
+        };
+        assert!(parse(&portion).is_none());
+        assert!(application_context(&portion).is_none());
     }
 }

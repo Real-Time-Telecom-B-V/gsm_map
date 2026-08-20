@@ -1,76 +1,158 @@
-//! USSD (Unstructured Supplementary Service Data) operations — 3GPP TS 29.002.
+//! USSD operations — 3GPP TS 29.002.
 //!
 //! - processUnstructuredSS-Request (op 59)
 //! - unstructuredSS-Request (op 60)
 //! - unstructuredSS-Notify (op 61)
+//!
+//! All three arguments share the same `USSD-Arg` shape and all members
+//! TS 29.002 defines are modelled; see [`crate`] on why an unmodelled member is
+//! fatal rather than merely absent.
 
 use rasn::prelude::*;
 
 use crate::types::IsdnAddressString;
 
-/// USSD Data Coding Scheme (CBS encoding per 3GPP TS 23.038).
+/// USSD-DataCodingScheme — one byte, per TS 23.038.
 pub type UssdDataCodingScheme = OctetString;
 
-/// USSD String — the actual USSD text, encoded per the data coding scheme.
+/// USSD-String — the (packed) USSD text, up to 160 bytes.
 pub type UssdString = OctetString;
 
 /// ProcessUnstructuredSS-Request-Arg (op 59).
-/// Sent by the MSC to the HLR/gsmSCF to initiate a USSD dialogue.
+///
+/// ```asn1
+/// ProcessUnstructuredSS-RequestArg ::= SEQUENCE {
+///     ussd-DataCodingScheme     USSD-DataCodingScheme,
+///     ussd-String               USSD-String,
+///     ...,
+///     alertingPattern           AlertingPattern OPTIONAL,
+///     msisdn                [0] ISDN-AddressString OPTIONAL }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct ProcessUnstructuredSsRequestArg {
-    /// Data coding scheme (e.g., 0x0F for default GSM 7-bit).
     pub ussd_data_coding_scheme: UssdDataCodingScheme,
-    /// USSD string (the USSD code, e.g., *100#).
     pub ussd_string: UssdString,
-    /// MSISDN of the subscriber (optional, v3).
+    pub alerting_pattern: Option<OctetString>,
     #[rasn(tag(context, 0))]
     pub msisdn: Option<IsdnAddressString>,
 }
 
+impl ProcessUnstructuredSsRequestArg {
+    /// The two mandatory members; every optional member starts `None`.
+    pub fn new(ussd_data_coding_scheme: UssdDataCodingScheme, ussd_string: UssdString) -> Self {
+        Self {
+            ussd_data_coding_scheme,
+            ussd_string,
+            alerting_pattern: None,
+            msisdn: None,
+        }
+    }
+}
+
 /// ProcessUnstructuredSS-Request-Res (op 59).
+///
+/// ```asn1
+/// ProcessUnstructuredSS-RequestRes ::= SEQUENCE {
+///     ussd-DataCodingScheme  USSD-DataCodingScheme,
+///     ussd-String            USSD-String,
+///     ... }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct ProcessUnstructuredSsRequestRes {
-    /// Data coding scheme for the response.
     pub ussd_data_coding_scheme: UssdDataCodingScheme,
-    /// USSD response string.
     pub ussd_string: UssdString,
 }
 
 /// UnstructuredSS-Request-Arg (op 60).
-/// Sent by the HLR/gsmSCF to the MSC to request input from the subscriber.
+///
+/// ```asn1
+/// UnstructuredSS-RequestArg ::= SEQUENCE {
+///     ussd-DataCodingScheme     USSD-DataCodingScheme,
+///     ussd-String               USSD-String,
+///     ...,
+///     alertingPattern           AlertingPattern OPTIONAL,
+///     msisdn                [0] ISDN-AddressString OPTIONAL }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct UnstructuredSsRequestArg {
-    /// Data coding scheme.
     pub ussd_data_coding_scheme: UssdDataCodingScheme,
-    /// USSD string (prompt text).
     pub ussd_string: UssdString,
+    pub alerting_pattern: Option<OctetString>,
+    #[rasn(tag(context, 0))]
+    pub msisdn: Option<IsdnAddressString>,
+}
+
+impl UnstructuredSsRequestArg {
+    /// The two mandatory members; every optional member starts `None`.
+    pub fn new(ussd_data_coding_scheme: UssdDataCodingScheme, ussd_string: UssdString) -> Self {
+        Self {
+            ussd_data_coding_scheme,
+            ussd_string,
+            alerting_pattern: None,
+            msisdn: None,
+        }
+    }
 }
 
 /// UnstructuredSS-Request-Res (op 60).
+///
+/// ```asn1
+/// UnstructuredSS-RequestRes ::= SEQUENCE {
+///     ussd-DataCodingScheme  USSD-DataCodingScheme OPTIONAL,
+///     ussd-String            USSD-String OPTIONAL,
+///     ... }
+/// ```
+///
+/// Both members are modelled as **mandatory** even though the ASN.1 marks them
+/// OPTIONAL. They are two adjacent untagged OCTET STRINGs, so BER cannot tell
+/// which one is present when only one is — the ASN.1 is only unambiguous because
+/// TS 29.002 requires them together or not at all. An answer that carries
+/// neither is expressed by a TCAP `ReturnResult` with no parameter, not by an
+/// empty SEQUENCE.
 #[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct UnstructuredSsRequestRes {
-    /// Data coding scheme for the response.
     pub ussd_data_coding_scheme: UssdDataCodingScheme,
-    /// USSD response string (user input).
     pub ussd_string: UssdString,
 }
 
 /// UnstructuredSS-Notify-Arg (op 61).
-/// Sent by the HLR/gsmSCF to the MSC to display a notification to the subscriber.
+///
+/// ```asn1
+/// UnstructuredSS-NotifyArg ::= SEQUENCE {
+///     ussd-DataCodingScheme     USSD-DataCodingScheme,
+///     ussd-String               USSD-String,
+///     ...,
+///     alertingPattern           AlertingPattern OPTIONAL,
+///     msisdn                [0] ISDN-AddressString OPTIONAL }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct UnstructuredSsNotifyArg {
-    /// Data coding scheme.
     pub ussd_data_coding_scheme: UssdDataCodingScheme,
-    /// USSD string (notification text).
     pub ussd_string: UssdString,
+    pub alerting_pattern: Option<OctetString>,
+    #[rasn(tag(context, 0))]
+    pub msisdn: Option<IsdnAddressString>,
 }
 
-/// UnstructuredSS-Notify-Res (op 61) — empty.
-#[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
+impl UnstructuredSsNotifyArg {
+    /// The two mandatory members; every optional member starts `None`.
+    pub fn new(ussd_data_coding_scheme: UssdDataCodingScheme, ussd_string: UssdString) -> Self {
+        Self {
+            ussd_data_coding_scheme,
+            ussd_string,
+            alerting_pattern: None,
+            msisdn: None,
+        }
+    }
+}
+
+/// UnstructuredSS-Notify-Res (op 61) — the operation has no result parameter.
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct UnstructuredSsNotifyRes {}
 
+/// Operation codes for USSD. Re-exported from [`crate::types::op_codes`].
 pub mod op_codes {
-    pub const PROCESS_UNSTRUCTURED_SS_REQUEST: i64 = 59;
-    pub const UNSTRUCTURED_SS_REQUEST: i64 = 60;
-    pub const UNSTRUCTURED_SS_NOTIFY: i64 = 61;
+    pub use crate::types::op_codes::{
+        PROCESS_UNSTRUCTURED_SS_REQUEST, UNSTRUCTURED_SS_NOTIFY, UNSTRUCTURED_SS_REQUEST,
+    };
 }
