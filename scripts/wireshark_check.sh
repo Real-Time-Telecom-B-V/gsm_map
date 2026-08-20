@@ -35,17 +35,47 @@ mkdir -p "$WIRESHARK_CONFIG_DIR"
 echo "[*] emitting vectors..."
 cargo run --quiet --example wireshark_vectors >"$work/vectors.hex" 2>"$work/expected.tsv"
 
+echo "[*] $(tshark --version 2>/dev/null | head -1)"
+
 echo "[*] text2pcap -l 142 (SS7 SCCP)..."
-text2pcap -l 142 "$work/vectors.hex" "$work/vectors.pcap" 2>/dev/null
+if ! text2pcap -l 142 "$work/vectors.hex" "$work/vectors.pcap" >"$work/text2pcap.log" 2>&1; then
+    echo "[!] text2pcap failed:" >&2
+    cat "$work/text2pcap.log" >&2
+    exit 1
+fi
+[ -s "$work/vectors.pcap" ] || {
+    echo "[!] text2pcap produced an empty capture:" >&2
+    cat "$work/text2pcap.log" >&2
+    exit 1
+}
 
 # SMS reassembly is stateful across frames: a synthetic TPDU in one vector can
 # leave the gsm_sms dissector waiting for a continuation and swallow the frame
-# after it. Every vector here is a complete message, so turn it off.
+# after it. Every vector here is a complete message, so turn it off -- but only
+# with the preferences this build actually has, since tshark treats an unknown
+# -o as fatal and older releases do not carry all of them.
+prefs=()
+supported="$(tshark -G defaultprefs 2>/dev/null | sed 's/^#//')"
+for pref in gsm_sms.reassemble gsm_sms.reassemble_with_lower_layers_info; do
+    if grep -q "^${pref}:" <<<"$supported"; then
+        prefs+=(-o "${pref}:FALSE")
+    else
+        echo "[*] note: this tshark has no ${pref}, leaving it at its default"
+    fi
+done
+
 echo "[*] dissecting..."
-tshark -r "$work/vectors.pcap" -V \
-    -o gsm_sms.reassemble:FALSE \
-    -o gsm_sms.reassemble_with_lower_layers_info:FALSE \
-    >"$work/dissection.txt" 2>/dev/null
+if ! tshark -r "$work/vectors.pcap" -V ${prefs[@]+"${prefs[@]}"} \
+    >"$work/dissection.txt" 2>"$work/tshark.log"; then
+    echo "[!] tshark failed:" >&2
+    cat "$work/tshark.log" >&2
+    exit 1
+fi
+[ -s "$work/dissection.txt" ] || {
+    echo "[!] tshark dissected nothing. stderr was:" >&2
+    cat "$work/tshark.log" >&2
+    exit 1
+}
 
 python3 - "$work/expected.tsv" "$work/dissection.txt" <<'PY'
 import sys
