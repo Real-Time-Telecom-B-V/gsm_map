@@ -78,7 +78,13 @@ fi
 }
 
 python3 - "$work/expected.tsv" "$work/dissection.txt" <<'PY'
+import re
 import sys
+
+# Wireshark 4.4 started writing the block type into the frame line ("Frame 1:
+# Packet, 97 bytes on wire"); 4.2 and earlier go straight to the length. Match
+# the part both spell the same way.
+FRAME = re.compile(r"^Frame \d+:")
 
 expected_path, dissection_path = sys.argv[1], sys.argv[2]
 
@@ -93,7 +99,7 @@ for line in open(expected_path):
 frames, current, in_map = [], None, False
 whole, current_whole = [], None
 for line in open(dissection_path).read().splitlines():
-    if line.startswith("Frame ") and " Packet," in line:
+    if FRAME.match(line):
         if current is not None:
             frames.append(current)
             whole.append(current_whole)
@@ -115,8 +121,6 @@ for line in open(dissection_path).read().splitlines():
 if current is not None:
     frames.append(current)
     whole.append(current_whole)
-
-import re
 
 SKIP = ("invokeID:", "opCode:", "errorCode:", "localValue:", "Padding:", "Component:",
         "invoke", "returnResultLast", "returnError", "resultretres", "[")
