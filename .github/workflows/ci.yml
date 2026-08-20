@@ -65,6 +65,20 @@ jobs:
       - name: Memory-leak check
         run: cargo run --release --example leak_check
 
+      # A BER round-trip cannot catch a tag that is wrong in both directions, so
+      # the vectors also go past an independent decoder. tshark only reads a file
+      # here, so it needs no capture privileges; the debconf answer just keeps
+      # the install non-interactive.
+      - name: Install Wireshark CLI tools
+        run: |
+          echo "wireshark-common wireshark-common/install-setuid boolean false" \
+            | sudo debconf-set-selections
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tshark
+
+      - name: Wireshark cross-check
+        run: ./scripts/wireshark_check.sh
+
   # Build the wheel and run the Python parity suite.
   python:
     runs-on: ubuntu-latest
