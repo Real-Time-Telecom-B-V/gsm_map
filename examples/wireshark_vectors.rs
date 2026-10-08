@@ -52,7 +52,7 @@ use gsm_map::operations::lcs::{
 };
 use gsm_map::operations::location::{
     CancelLocationArg, CancellationType, Identity, PurgeMsArg, PurgeMsRes, SendIdentificationArg,
-    UpdateLocationArg, UpdateLocationRes,
+    SendIdentificationRes, UpdateLocationArg, UpdateLocationRes,
 };
 use gsm_map::operations::mo_forward_sm::MoForwardSmArg;
 use gsm_map::operations::mt_forward_sm::MtForwardSmArg;
@@ -1223,6 +1223,33 @@ fn mobility_vectors() {
             new_vlr_number: Some(e164(MSC_DIGITS)),
             new_lmsi: Some(oct(&[0x00, 0x00, 0x00, 0x01])),
             ..SendIdentificationArg::new(oct(&[0x11, 0x22, 0x33, 0x44]))
+        }),
+    );
+
+    // sendIdentification's v3 result is a [3] SEQUENCE; without the wrapper
+    // the dissector reads the v2 type and finds nothing it expects.
+    expect_fields(&[
+        "IMSI: 001010123456789",
+        "authenticationSetList: tripletList (0)",
+        "kc: 3333333333333333",
+        "lastUsedLtePLMN-Id: 00f110",
+        "mtCallPendingFlag",
+    ]);
+    emit_result(
+        "send_identification_res",
+        op_codes::SEND_IDENTIFICATION,
+        Some(ac::inter_vlr_info_retrieval_context(ac::V3)),
+        4,
+        ber(&SendIdentificationRes {
+            imsi: Some(imsi()),
+            triplet_list: Some(vec![AuthenticationTriplet {
+                rand: oct(&[0x11; 16]),
+                sres: oct(&[0x22; 4]),
+                kc: oct(&[0x33; 8]),
+            }]),
+            last_used_lte_plmn_id: Some(oct(&[0x00, 0xF1, 0x10])),
+            mt_call_pending_flag: Some(()),
+            ..Default::default()
         }),
     );
 

@@ -457,6 +457,33 @@ fn cancel_location_argument() {
     );
 }
 
+#[test]
+fn send_identification_result_carries_its_context_tag() {
+    use gsm_map::operations::location::SendIdentificationRes;
+
+    // SendIdentificationRes ::= [3] SEQUENCE { imsi IMSI OPTIONAL, ...,
+    // lastUsedLtePLMN-Id [4], mtCallPendingFlag [5] NULL }
+    //
+    // a3 11
+    //    04 08 00 01 01 21 43 65 87 f9    imsi
+    //    84 03 00 f1 10                   lastUsedLtePLMN-Id [4]: 001 01
+    //    85 00                            mtCallPendingFlag [5]
+    let value = SendIdentificationRes {
+        imsi: Some(imsi()),
+        last_used_lte_plmn_id: Some(oct(&[0x00, 0xf1, 0x10])),
+        mt_call_pending_flag: Some(()),
+        ..SendIdentificationRes::default()
+    };
+    let wire = "a3 11 04 08 00 01 01 21 43 65 87 f9 84 03 00 f1 10 85 00";
+    pinned(&value, wire);
+
+    // Before this was corrected the result went out as a universal SEQUENCE,
+    // `30 11 ...`, which is the version 2 result type: a version 3 peer reads
+    // the IMSI and nothing after it. Those octets are no longer accepted.
+    let previous = wire.replacen("a3 11", "30 11", 1);
+    common::refused::<SendIdentificationRes>(&common::vector(&previous));
+}
+
 // ── insertSubscriberData ────────────────────────────────────────────────────
 
 #[test]

@@ -5,8 +5,8 @@
 //! - purgeMS (op 67)
 //! - sendIdentification (op 55)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent. Sub-structures this
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not. Sub-structures this
 //! crate does not interpret are carried as [`Opaque`] and survive the round trip
 //! unchanged.
 
@@ -362,13 +362,18 @@ impl SendIdentificationArg {
 ///     currentSecurityContext  [2] CurrentSecurityContext OPTIONAL,
 ///     extensionContainer      [3] ExtensionContainer OPTIONAL,
 ///     ...,
-///     lastUsedLtePLMN-Id      [4] PLMN-Id OPTIONAL }
+///     lastUsedLtePLMN-Id      [4] PLMN-Id OPTIONAL,
+///     mtCallPendingFlag       [5] NULL OPTIONAL }
 /// ```
+///
+/// The result as a whole carries context tag `[3]`; the untagged SEQUENCE is
+/// the version 2 result, a different type.
 ///
 /// `authenticationSetList` is an **untagged optional CHOICE**; see
 /// [`SendAuthenticationInfoRes`](crate::operations::auth::SendAuthenticationInfoRes)
 /// on why its two alternatives are separate fields here.
 #[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
+#[rasn(tag(context, 3))]
 pub struct SendIdentificationRes {
     /// IMSI of the subscriber.
     pub imsi: Option<Imsi>,
@@ -383,6 +388,8 @@ pub struct SendIdentificationRes {
     pub extension_container: Option<ExtensionContainer>,
     #[rasn(tag(context, 4))]
     pub last_used_lte_plmn_id: Option<OctetString>,
+    #[rasn(tag(context, 5))]
+    pub mt_call_pending_flag: Option<()>,
 }
 
 /// Operation codes for location management. Re-exported from
