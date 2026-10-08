@@ -3,9 +3,9 @@
 //! - insertSubscriberData (op 7)
 //! - deleteSubscriberData (op 8)
 //!
-//! Every member TS 29.002 defines is modelled — all 53 of them on the insert
-//! argument — because BER decoding is not tolerant of unmodelled members; see
-//! [`crate`]. The subscription sub-structures themselves (CAMEL, GPRS, EPS, LCS,
+//! Every member TS 29.002 (Rel-18) defines is modelled — all 53 of them on the
+//! insert argument; see [`crate`] on what happens to one from a later release.
+//! The subscription sub-structures themselves (CAMEL, GPRS, EPS, LCS,
 //! ODB, LSA, CSG) are carried as [`Opaque`] and survive the round trip unchanged.
 //!
 //! Neither argument is in ascending tag order: TS 29.002 declares the members

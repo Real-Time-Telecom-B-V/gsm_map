@@ -4,8 +4,8 @@
 //! which is what makes the HLR alert the queued service centres. This is the MAP
 //! form of Alert-SC, so a store-and-forward gateway's queue drain depends on it.
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent.
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not.
 
 use rasn::prelude::*;
 

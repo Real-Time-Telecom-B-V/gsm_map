@@ -15,18 +15,39 @@
 //!
 //! Application contexts (v1/v2/v3) are provided for TCAP dialogue negotiation.
 //!
-//! Uses `rasn` for ASN.1 BER encoding/decoding.
+//! The types derive their ASN.1 from `rasn`. Encode with [`encode`] and decode
+//! with [`decode`].
 //!
-//! # Decoding what a peer actually sends
+//! # Decoding what a peer sends
 //!
-//! BER decoding is **not** tolerant of unmodelled members: `rasn` fails the
-//! whole operation with `UnexpectedExtraData` rather than skipping a tag it does
-//! not know. So a type this crate decodes from a peer models every member
-//! TS 29.002 defines, including ones with no use here — otherwise a single
-//! `extensionContainer` from a real HLR takes out the entire response. Members
-//! the crate does not interpret are carried opaquely and survive the round trip.
-//! Adding one later is therefore a decode-compatibility change, not a cosmetic
-//! one.
+//! Always decode with [`decode`] (or [`decode_with_extensions`]), never with
+//! `rasn::ber::decode` on these types. `rasn` 0.28 is unsafe on signalling in
+//! both directions:
+//!
+//! * it **loses data without an error**. An OPTIONAL member behind an
+//!   EXPLICIT tag (in MAP: every CHOICE-typed member behind a context tag)
+//!   whose content it cannot read comes back as absent; a SEQUENCE OF whose
+//!   last element it cannot read comes back without that element; octets after
+//!   the value are ignored. A `RoutingInfoForSM-Res` whose second serving node
+//!   it could not read decodes as an answer with one serving node;
+//! * it **refuses valid messages**. A SEQUENCE carrying a member from a later
+//!   release than this crate models fails to decode, although TS 29.002
+//!   17.1.4 says a receiver "shall not reject an unsupported extension
+//!   following "..."".
+//!
+//! [`decode`] is this crate's own decoder. A member the crate models that
+//! cannot be read is an error, as are a list element that cannot be read, an
+//! unknown CHOICE alternative (no CHOICE in TS 29.002 is extensible), a member
+//! that is repeated or out of order, and trailing octets. Members after the
+//! last one the crate models, in a SEQUENCE that has an extension marker, are
+//! skipped; [`decode_with_extensions`] returns them as [`UnknownExtension`] so
+//! that a peer on a newer release does not go unnoticed. Extensible
+//! ENUMERATED types keep a value they have no name for (an `Unrecognised`
+//! variant or [`types::OpenEnumerated`]), because what a receiver does with it
+//! is specified per type.
+//!
+//! Members the crate does not interpret are carried as [`types::Opaque`] and
+//! survive a round trip.
 
 pub mod address;
 pub mod application_context;

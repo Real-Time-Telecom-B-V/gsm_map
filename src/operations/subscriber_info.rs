@@ -6,8 +6,8 @@
 //! - provideSubscriberInfo (op 70)
 //! - anyTimeInterrogation (op 71)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent. Sub-structures this
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not. Sub-structures this
 //! crate does not interpret are carried as [`Opaque`] and survive the round trip
 //! unchanged.
 

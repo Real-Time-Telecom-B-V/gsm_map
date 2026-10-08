@@ -5,8 +5,8 @@
 //! - failureReport (op 25)
 //! - noteMsPresentForGprs (op 26)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent.
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not.
 
 use rasn::prelude::*;
 

@@ -93,7 +93,7 @@ fn routing_info_additional_number_lost_while_a_later_member_survives() {
 
 #[test]
 fn routing_info_additional_number_that_is_not_constructed() {
-    // An EXPLICIT tag is always constructed (X.690 8.14.2). Here [6] is
+    // An EXPLICIT tag is always constructed (X.690 8.14.3). Here [6] is
     // primitive, 86 instead of a6, around the same well-formed sgsn-Number.
     //   86 09 81 07 91 51 55 10 00 20 f0
     let wire = vector(

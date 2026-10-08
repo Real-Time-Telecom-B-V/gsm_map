@@ -249,10 +249,9 @@ pub type DiameterIdentity = OctetString;
 /// ```
 ///
 /// Both members are carried **opaquely** — the crate never generates private
-/// extensions and does not interpret an inbound one. Modelling the container at
-/// all is what matters: BER decoding is not tolerant of unmodelled members, so
-/// a peer that sends an `extensionContainer` we have not modelled makes the
-/// **whole operation** fail to decode, not just that member.
+/// extensions and does not interpret an inbound one. The container is itself
+/// extensible: [`crate::decode`] skips a member after these two and reports
+/// it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct ExtensionContainer {
     #[rasn(tag(context, 0))]

@@ -4,8 +4,8 @@
 //! - sendRoutingInfoForLCS (op 85)
 //! - subscriberLocationReport (op 86)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent. The positioning
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not. The positioning
 //! sub-structures are carried as [`Opaque`] and survive the round trip unchanged.
 
 use rasn::prelude::*;

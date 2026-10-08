@@ -3,8 +3,8 @@
 //! - sendRoutingInfo (op 22)
 //! - provideRoamingNumber (op 4)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent. The call-control
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not. The call-control
 //! sub-structures are carried as [`Opaque`] and survive the round trip unchanged.
 
 use rasn::prelude::*;

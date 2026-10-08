@@ -4,9 +4,9 @@
 //! or to a registered IP-SM-GW. Also carries `mt-ForwardSM-VGCS` (op 21), the
 //! voice-group-call form.
 //!
-//! Every member TS 29.002 defines is modelled. BER decoding is not tolerant of
-//! unmodelled members, so an SMS-GMSC that sends `smsOverIP-OnlyIndicator` or
-//! `smsGmscAddress` would otherwise make the whole argument fail to decode.
+//! Every member TS 29.002 (Rel-18) defines is modelled, so what an SMS-GMSC
+//! sends, `smsOverIP-OnlyIndicator` or `smsGmscAddress` for instance, reaches
+//! the caller. See [`crate`] on what happens to a member from a later release.
 
 use rasn::prelude::*;
 

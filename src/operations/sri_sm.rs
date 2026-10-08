@@ -3,11 +3,11 @@
 //! Used by the SMS-GMSC to query the HLR for the IMSI and serving MSC/SGSN
 //! address of the SMS recipient.
 //!
-//! Both types model **every** member TS 29.002 defines, including the ones this
-//! crate has no use for. That is not completeness for its own sake: BER decoding
-//! here is not tolerant of unmodelled members, so a peer that sends a member we
-//! skipped makes the whole operation fail to decode rather than just that member
-//! come back empty. Members we do not interpret are carried opaquely.
+//! Both types model **every** member TS 29.002 (Rel-18) defines, including the
+//! ones this crate has no use for; members it does not interpret are carried
+//! opaquely. Decode with [`crate::decode`]: a serving node that is on the wire
+//! and cannot be read is then an error rather than a shorter answer, and a
+//! member from a later release is skipped and reported.
 
 use rasn::prelude::*;
 

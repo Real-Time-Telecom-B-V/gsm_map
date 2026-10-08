@@ -158,7 +158,7 @@ mod tests {
 // back from an independent decoder; see `scripts/wireshark_check.sh`.
 //
 // The parameter travels as the TCAP `ReturnError`'s own `parameter` field, so
-// decode it with `rasn::ber::decode::<UnknownSubscriberParam>(bytes)` once the
+// decode it with `gsm_map::decode::<UnknownSubscriberParam>(bytes)` once the
 // error code says which type to expect.
 
 use rasn::prelude::*;

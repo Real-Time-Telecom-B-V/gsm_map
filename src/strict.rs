@@ -37,7 +37,7 @@
 //! * Nothing may follow the outermost value, the value inside an EXPLICIT
 //!   tag, or the last member of a SEQUENCE that is not extensible.
 //! * SEQUENCE, SEQUENCE OF, SET OF and EXPLICIT have to be constructed on the
-//!   wire (X.690 8.9.1, 8.10.1, 8.12.1, 8.14.2).
+//!   wire (X.690 8.9.1, 8.10.1, 8.12.1, 8.14.3).
 //! * Elements left over after the last modelled member of an extensible
 //!   SEQUENCE, with tags that SEQUENCE does not define, are extension
 //!   additions from a later release. They are skipped and reported as
@@ -54,10 +54,13 @@
 //!
 //! In the Rel-18 modules 320 of the 326 SEQUENCE types carry the marker, so
 //! extensible is the default here and the exceptions this crate models are
-//! named in `is_closed`. The marker is always the last thing before the
-//! additions and no type has a second one, so additions unknown to this crate
-//! can only arrive after every member it models: that is the only place they
-//! are accepted (X.680 clause 52 on the extension insertion point).
+//! named in `is_closed`. Every one of those types has a single marker, so the
+//! extension insertion point is "the end of the type notation" (X.680
+//! 3.8.35): additions unknown to this crate can only arrive after every
+//! member it models, and that is the only place they are accepted. X.680 52.1
+//! says of such additions that "they shall not be treated as an error during
+//! the decoding process", and X.690 8.1.1.4 that BER encodes them as if they
+//! were ordinary members, so on the wire they are simply further elements.
 //!
 //! No CHOICE in TS 29.002 has an extension marker, so an alternative this
 //! crate does not know is a decoding error. Extensible ENUMERATED types are
