@@ -479,7 +479,14 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     }
 
     fn decode_null(&mut self, tag: Tag) -> Result<()> {
-        self.leaf(tag, |ber| ber.decode_null(tag))
+        let found = self.next(tag)?;
+        if found.constructed || !found.content.is_empty() {
+            return Err(error(format!(
+                "{} is a NULL and has to be primitive and empty",
+                tag_name(found.tag)
+            )));
+        }
+        Ok(())
     }
 
     fn decode_object_identifier(&mut self, tag: Tag) -> Result<types::ObjectIdentifier> {
@@ -546,6 +553,17 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     where
         T: From<&'buf [u8]> + From<Vec<u8>>,
     {
+        // The usual case, and most of a MAP message: primitive, no SIZE
+        // constraint to check. The content is the value.
+        if constraints.size().is_none() {
+            let rest = self.input;
+            let found = self.next(tag)?;
+            if !found.constructed {
+                return Ok(T::from(found.content.to_vec()));
+            }
+            // Constructed (segmented) form: let rasn reassemble it.
+            self.input = rest;
+        }
         self.leaf(tag, |ber| {
             ber.decode_octet_string::<Vec<u8>>(tag, constraints)
         })
@@ -807,6 +825,27 @@ mod tests {
         // Indefinite length that never ends, and one on a primitive element.
         assert!(element(&[0x30, 0x80, 0x05, 0x00], 0).is_err());
         assert!(element(&[0x04, 0x80, 0x00, 0x00], 0).is_err());
+    }
+
+    #[test]
+    fn octet_strings_are_read_in_both_forms() {
+        let (primitive, _) = decode::<types::OctetString>(&[0x04, 0x02, 0xaa, 0xbb]).unwrap();
+        assert_eq!(primitive, [0xaa, 0xbb].as_slice());
+        // The constructed form is BER, although TS 29.002 17.1.1 asks senders
+        // for the primitive one; it is read, not refused.
+        let (segmented, _) =
+            decode::<types::OctetString>(&[0x24, 0x06, 0x04, 0x01, 0xaa, 0x04, 0x01, 0xbb])
+                .unwrap();
+        assert_eq!(segmented, [0xaa, 0xbb].as_slice());
+        assert!(decode::<types::OctetString>(&[0x05, 0x00]).is_err());
+        assert!(decode::<types::OctetString>(&[0x04, 0x03, 0xaa]).is_err());
+    }
+
+    #[test]
+    fn a_null_has_to_be_empty() {
+        assert!(decode::<()>(&[0x05, 0x00]).is_ok());
+        assert!(decode::<()>(&[0x05, 0x01, 0x00]).is_err());
+        assert!(decode::<()>(&[0x25, 0x00]).is_err());
     }
 
     #[test]
