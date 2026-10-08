@@ -169,6 +169,47 @@ fn an_unknown_member_of_a_list_element_does_not_cost_the_element() {
 }
 
 #[test]
+fn an_unknown_member_behind_an_explicit_tag_does_not_cost_the_member() {
+    use gsm_map::operations::gprs_location::{EpsInfo, UpdateGprsLocationArg};
+
+    // PDN-GW-Update ::= SEQUENCE { apn [0], pdn-gw-Identity [1], contextId [2],
+    // extensionContainer [3], ... }, here with a member [4] after contextId,
+    // inside eps-info [5], which is OPTIONAL and EXPLICIT.
+    //
+    // 30 23
+    //    04 08 00 01 01 21 43 65 87 f9     imsi
+    //    04 07 91 51 55 10 00 30 f0        sgsn-Number
+    //    04 05 04 c0 00 02 01              sgsn-Address
+    //    a5 07                             eps-info [5]
+    //       a0 05                          pdn-gw-update [0]
+    //          82 01 05                    contextId [2] 5
+    //          84 00                       [4]: not defined
+    let wire = vector(
+        "30 23 04 08 00 01 01 21 43 65 87 f9 04 07 91 51 55 10 00 30 f0
+         04 05 04 c0 00 02 01 a5 07 a0 05 82 01 05 84 00",
+    );
+
+    // rasn refuses the unknown member inside, and because eps-info is
+    // OPTIONAL behind an EXPLICIT tag that refusal becomes "absent".
+    let lost: UpdateGprsLocationArg = lenient(&wire);
+    assert_eq!(lost.eps_info, None);
+
+    let decoded = gsm_map::decode_with_extensions::<UpdateGprsLocationArg>(&wire).unwrap();
+    match decoded.value.eps_info {
+        Some(EpsInfo::PdnGwUpdate(update)) => assert_eq!(update.context_id, Some(5.into())),
+        other => panic!("eps-info is {other:?}"),
+    }
+    assert_eq!(
+        decoded.unknown_extensions,
+        [extension(
+            "PdnGwUpdate",
+            Tag::new(Class::Context, 4),
+            "84 00"
+        )]
+    );
+}
+
+#[test]
 fn a_private_tagged_member_is_skipped() {
     // Clause 17.1.4: private extensions in a version 2 context "follow the
     // extension marker and [are] tagged using PRIVATE tags".

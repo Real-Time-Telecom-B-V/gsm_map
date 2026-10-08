@@ -119,18 +119,37 @@ fn update_gprs_location_eps_info_with_a_truncated_member() {
     //    04 07 91 51 55 10 00 30 f0        sgsn-Number +1 555 010 0030
     //    04 05 04 c0 00 02 01              sgsn-Address: IPv4, 192.0.2.1
     //    a5 06                             eps-info [5], EXPLICIT: it is a CHOICE
-    //       a0 05                          pdn-gw-update [0]: five octets announced,
-    //          80 02 01 02                 four present
+    //       a0 04                          pdn-gw-update [0]
+    //          80 05 01 02                 apn [0]: five octets announced, two present
     let wire = vector(
         "30 22 04 08 00 01 01 21 43 65 87 f9 04 07 91 51 55 10 00 30 f0
-         04 05 04 c0 00 02 01 a5 06 a0 05 80 02 01 02",
+         04 05 04 c0 00 02 01 a5 06 a0 04 80 05 01 02",
     );
 
     let lost: UpdateGprsLocationArg = lenient(&wire);
     assert_eq!(lost.eps_info, None, "eps-info is on the wire and is gone");
+    // The HSS processes the location update as if the serving node had sent
+    // no PDN gateway at all.
 
     let error = refused::<UpdateGprsLocationArg>(&wire);
     assert!(error.contains("truncated"), "{error}");
+}
+
+#[test]
+fn update_gprs_location_eps_info_with_an_unknown_alternative() {
+    // eps-info [5] holding [2]; EPS-Info has pdn-gw-update [0] and
+    // isr-Information [1].
+    //   a5 04 82 02 05 a0
+    let wire = vector(
+        "30 20 04 08 00 01 01 21 43 65 87 f9 04 07 91 51 55 10 00 30 f0
+         04 05 04 c0 00 02 01 a5 04 82 02 05 a0",
+    );
+
+    let lost: UpdateGprsLocationArg = lenient(&wire);
+    assert_eq!(lost.eps_info, None);
+
+    let error = refused::<UpdateGprsLocationArg>(&wire);
+    assert!(error.contains("EpsInfo"), "{error}");
 }
 
 #[test]
