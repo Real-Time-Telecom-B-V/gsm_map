@@ -480,7 +480,7 @@ fn location_info_extension_container_does_not_eat_the_members_after_it() {
     let info = LocationInfoWithLmsi {
         lmsi: Some(vec![0x00, 0x00, 0x00, 0x2A].into()),
         extension_container: Some(ExtensionContainer {
-            private_extension_list: Some(rasn::types::Any::new(vec![
+            private_extension_list: Some(gsm_map::types::Opaque::new(vec![
                 0x30, 0x08, 0x06, 0x06, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D,
             ])),
             pcs_extensions: None,
