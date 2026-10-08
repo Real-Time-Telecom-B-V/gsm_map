@@ -367,3 +367,45 @@ def test_error_name() -> None:
     assert gsm_map.error_name(61) == "atm-NotAllowed"
     assert gsm_map.error_name(32) == "sm-DeliveryFailure"
     assert gsm_map.error_name(9999) == "unknown"
+
+
+# ── Strict decoding ─────────────────────────────────────────────────────────
+#
+# The vectors are written by hand from TS 29.002; tests/decoder_strictness.rs
+# and tests/extensibility.rs have the derivations.
+
+SRI_SM_RES_SECOND_NODE_UNREADABLE = bytes.fromhex(
+    "3020040800010121436587f9"
+    "a0148107915155100010f0"
+    "a6098507915155100020f0"  # additional-Number [6] holding [5]: not an alternative
+)
+
+SRI_SM_ARG = bytes.fromhex("30138007915155100099f98101ff82059151551099")
+
+
+def test_a_member_that_cannot_be_read_is_an_error_not_absent() -> None:
+    # rasn alone decodes this with the second serving node missing.
+    with pytest.raises(gsm_map.MapError):
+        gsm_map.RoutingInfoForSmRes.decode(SRI_SM_RES_SECOND_NODE_UNREADABLE)
+
+
+def test_octets_after_the_value_are_an_error() -> None:
+    assert gsm_map.RoutingInfoForSmArg.decode(SRI_SM_ARG).sm_rp_pri is True
+    with pytest.raises(gsm_map.MapError):
+        gsm_map.RoutingInfoForSmArg.decode(SRI_SM_ARG + b"\x05\x00")
+
+
+def test_an_extension_addition_from_a_later_release_is_skipped() -> None:
+    # [30] after the last member Rel-18 defines; the length grows by three.
+    extended = bytes([0x30, 0x16]) + SRI_SM_ARG[2:] + bytes.fromhex("9e012a")
+    decoded = gsm_map.RoutingInfoForSmArg.decode(extended)
+    assert decoded.sm_rp_pri is True
+    # What this crate does not model is not carried along.
+    assert decoded.encode() == SRI_SM_ARG
+
+
+def test_a_repeated_member_is_an_error() -> None:
+    # gprsSupportIndicator [7] twice.
+    repeated = bytes([0x30, 0x17]) + SRI_SM_ARG[2:] + bytes.fromhex("87008700")
+    with pytest.raises(gsm_map.MapError):
+        gsm_map.RoutingInfoForSmArg.decode(repeated)
