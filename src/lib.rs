@@ -33,6 +33,7 @@ pub mod application_context;
 pub mod dialogue;
 pub mod error;
 pub mod operations;
+mod strict;
 pub mod types;
 
 /// PyO3 bindings (`--features python`). The default crate build is pyo3-free.
@@ -43,10 +44,45 @@ pub mod python;
 pub use python::register;
 
 pub use error::MapError;
+pub use strict::{Decoded, UnknownExtension};
 pub use types::{
     op_codes, operation_name, AddressString, Imsi, IsdnAddressString, Lmsi, LocationInfoWithLmsi,
     SmRpDa, SmRpOa, OPERATION_REGISTRY,
 };
+
+/// BER-encode a MAP operation argument, result or error parameter.
+pub fn encode<T: rasn::Encode>(value: &T) -> Result<Vec<u8>, MapError> {
+    Ok(rasn::ber::encode(value)?)
+}
+
+/// BER-decode a MAP operation argument, result or error parameter. This is
+/// the way to decode anything a peer sent.
+///
+/// `bytes` has to hold exactly one value of `T`. A member this crate models
+/// whose content cannot be read, a list element that cannot be read, an
+/// unknown CHOICE alternative and octets after the value are all errors.
+/// Members a later release of TS 29.002 added after the extension marker of
+/// a SEQUENCE are skipped, as clause 17.1.4 requires; use
+/// [`decode_with_extensions`] to learn that there were any.
+///
+/// Do not call `rasn::ber::decode` on this crate's types for anything that
+/// came off a signalling link. See the crate documentation for what it loses
+/// and what it refuses.
+pub fn decode<T: rasn::Decode>(bytes: &[u8]) -> Result<T, MapError> {
+    Ok(strict::decode(bytes)?.0)
+}
+
+/// [`decode`], also returning the extension additions that were skipped: the
+/// members of an extensible SEQUENCE that this crate does not model. A
+/// receiver that wants to know when a peer speaks a newer release than this
+/// crate reads them here.
+pub fn decode_with_extensions<T: rasn::Decode>(bytes: &[u8]) -> Result<Decoded<T>, MapError> {
+    let (value, unknown_extensions) = strict::decode(bytes)?;
+    Ok(Decoded {
+        value,
+        unknown_extensions,
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -58,6 +94,11 @@ mod tests {
         let encoded = rasn::ber::encode(val).expect("encode failed");
         let decoded: T = rasn::ber::decode(&encoded).expect("decode failed");
         assert_eq!(&decoded, val);
+        // The crate's own decoder has to agree with rasn on everything the
+        // crate itself encodes, and find nothing it does not know.
+        let strict = decode_with_extensions::<T>(&encoded).expect("strict decode failed");
+        assert_eq!(&strict.value, val);
+        assert_eq!(strict.unknown_extensions, []);
     }
 
     fn oct(bytes: &[u8]) -> OctetString {

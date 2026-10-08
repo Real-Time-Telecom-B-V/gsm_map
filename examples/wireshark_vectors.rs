@@ -249,8 +249,23 @@ fn emit_result(
     );
 }
 
-fn ber(value: &impl rasn::Encode) -> Vec<u8> {
-    rasn::ber::encode(value).expect("BER encode")
+/// Encode a value for a frame. Every vector is also put through the crate's
+/// own decoder, which has to return the same value and meet nothing it does
+/// not know: a vector Wireshark reads and this crate does not would be a
+/// one-way codec.
+fn ber<T>(value: &T) -> Vec<u8>
+where
+    T: rasn::Encode + rasn::Decode + PartialEq + std::fmt::Debug,
+{
+    let encoded = gsm_map::encode(value).expect("BER encode");
+    let decoded = gsm_map::decode_with_extensions::<T>(&encoded)
+        .unwrap_or_else(|error| panic!("{error}: {value:?}"));
+    assert_eq!(
+        &decoded.value, value,
+        "the vector does not decode to itself"
+    );
+    assert_eq!(decoded.unknown_extensions, []);
+    encoded
 }
 
 /// An application context, carried on a `Begin` with a trivial invoke: the
