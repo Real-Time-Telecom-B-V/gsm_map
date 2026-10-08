@@ -101,6 +101,12 @@ fi
     exit 1
 }
 
+# WIRESHARK_CHECK_KEEP=<dir> keeps the dissection and the capture for reading.
+if [ -n "${WIRESHARK_CHECK_KEEP:-}" ]; then
+    mkdir -p "$WIRESHARK_CHECK_KEEP"
+    cp "$work/dissection.txt" "$work/vectors.pcap" "$work/expected.tsv" "$WIRESHARK_CHECK_KEEP/"
+fi
+
 python3 - "$work/expected.tsv" "$work/dissection.txt" <<'PY'
 import re
 import sys
@@ -112,10 +118,15 @@ FRAME = re.compile(r"^Frame \d+:")
 
 expected_path, dissection_path = sys.argv[1], sys.argv[2]
 
+# A fourth column, where present, lists what the dissection of that frame has
+# to contain: "name: value" lines as tshark prints them, separated by "|".
+# The member count says every member arrived; these say it arrived with the
+# value and under the name the specification gives it.
 expected = []
 for line in open(expected_path):
-    label, kind, count = line.rstrip("\n").split("\t")
-    expected.append((label, kind, int(count)))
+    label, kind, count, *rest = line.rstrip("\n").split("\t")
+    wanted = [w for w in rest[0].split("|") if w] if rest else []
+    expected.append((label, kind, int(count), wanted))
 
 # Split the -V output into frames. Operation frames keep only the gsm_map
 # subtree; context and error frames need the whole frame, because the dialogue
@@ -189,7 +200,15 @@ if len(frames) != len(expected):
           file=sys.stderr)
     failures += 1
 
-for (label, kind, want), lines, all_lines in zip(expected, frames, whole):
+fields_checked = 0
+for (label, kind, want, wanted), lines, all_lines in zip(expected, frames, whole):
+    missing = [w for w in wanted if not any(w in ln for ln in all_lines)]
+    fields_checked += len(wanted) - len(missing)
+    if missing:
+        print("  FAIL  %-36s the dissection lacks: %s" % (label, " | ".join(missing)),
+              file=sys.stderr)
+        failures += 1
+        continue
     if kind in ("acn", "error", "opname"):
         lines = all_lines
         if kind == "opname":
@@ -223,15 +242,15 @@ for (label, kind, want), lines, all_lines in zip(expected, frames, whole):
 if failures:
     print("\nFAIL: %d Wireshark cross-check(s) failed" % failures, file=sys.stderr)
     sys.exit(1)
-operations = sum(1 for _, k, _ in expected if k in ("invoke", "result"))
-params = sum(1 for _, k, _ in expected if k.startswith("error_param"))
-contexts = sum(1 for _, k, _ in expected if k == "acn")
-errors_checked = sum(1 for _, k, _ in expected if k == "error")
-opnames = sum(1 for _, k, _ in expected if k == "opname")
-print("\nPASS: Wireshark named back every member of %d operations and %d error "
-      "parameters, and resolved %d operation names, %d application contexts "
-      "and %d error codes"
-      % (operations, params, opnames, contexts, errors_checked))
+operations = sum(1 for _, k, _, _ in expected if k in ("invoke", "result"))
+params = sum(1 for _, k, _, _ in expected if k.startswith("error_param"))
+contexts = sum(1 for _, k, _, _ in expected if k == "acn")
+errors_checked = sum(1 for _, k, _, _ in expected if k == "error")
+opnames = sum(1 for _, k, _, _ in expected if k == "opname")
+print("\nPASS: Wireshark named back every member of %d operation frames and %d error "
+      "parameters, read back %d field values, and resolved %d operation names, "
+      "%d application contexts and %d error codes"
+      % (operations, params, fields_checked, opnames, contexts, errors_checked))
 PY
 
 # Every frame must reach the gsm_map dissector at all.

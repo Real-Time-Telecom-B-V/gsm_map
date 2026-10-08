@@ -189,8 +189,10 @@ pub struct ExtensionContainerOnlyParam {
 ///     unknownSubscriberDiagnostic UnknownSubscriberDiagnostic OPTIONAL }
 /// ```
 ///
-/// `unknownSubscriberDiagnostic` is `imsiUnknown(0)`, `gprsSubscriptionUnknown(1)`,
-/// `npdbMismatch(2)`, `imsiDetached(3)`.
+/// `unknownSubscriberDiagnostic` is `imsiUnknown(0)`,
+/// `gprs-eps-SubscriptionUnknown(1)`, then the marker and `npdbMismatch(2)`. "If
+/// unknown values are received in UnknownSubscriberDiagnostic they shall be
+/// discarded."
 #[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct UnknownSubscriberParam {
     pub extension_container: Option<ExtensionContainer>,
@@ -207,7 +209,8 @@ pub struct UnknownSubscriberParam {
 ///     ...,
 ///     additionalAbsentSubscriberDiagnosticSM [0] AbsentSubscriberDiagnosticSM OPTIONAL,
 ///     imsi                                   [1] IMSI OPTIONAL,
-///     requestedRetransmissionTime            [2] Time OPTIONAL }
+///     requestedRetransmissionTime            [2] Time OPTIONAL,
+///     userIdentifierAlert                    [3] IMSI OPTIONAL }
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct AbsentSubscriberSmParam {
@@ -221,6 +224,10 @@ pub struct AbsentSubscriberSmParam {
     /// When the HLR suggests the service centre tries again.
     #[rasn(tag(context, 2))]
     pub requested_retransmission_time: Option<Time>,
+    /// The identity under which the HLR will alert the service centre once
+    /// the subscriber is reachable again.
+    #[rasn(tag(context, 3))]
+    pub user_identifier_alert: Option<Imsi>,
 }
 
 /// `absentSubscriber` (27).

@@ -50,8 +50,10 @@ pub struct PrepareGroupCallArg {
     pub extension_container: Option<ExtensionContainer>,
     #[rasn(tag(context, 5))]
     pub vstk: Option<OctetString>,
+    /// `VSTK-RAND ::= OCTET STRING (SIZE (5))`: the 36-bit value from bit 7 of
+    /// octet 1 to bit 4 of octet 5, the low four bits of octet 5 zero.
     #[rasn(tag(context, 6))]
-    pub vstk_rand: Option<BitString>,
+    pub vstk_rand: Option<OctetString>,
     #[rasn(tag(context, 7))]
     pub talker_channel_parameter: Option<()>,
     #[rasn(tag(context, 8))]

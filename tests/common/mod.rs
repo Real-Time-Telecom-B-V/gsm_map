@@ -3,6 +3,8 @@
 //! assigned.
 #![allow(dead_code)]
 
+pub mod spec_vectors;
+
 use std::fmt::Debug;
 
 /// IMSI 001 01 0123456789 as TBCD: digits are packed two to an octet, the

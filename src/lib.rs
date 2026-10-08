@@ -470,8 +470,14 @@ mod tests {
             .collect();
         let mut res = SendAuthenticationInfoRes {
             extension_container: Some(types::ExtensionContainer::default()),
-            eps_authentication_set_list: Some(opaque()),
-            ue_usage_type: Some(1.into()),
+            eps_authentication_set_list: Some(vec![operations::auth::EpcAv {
+                rand: oct(&[0x01; 16]),
+                xres: oct(&[0x02; 8]),
+                autn: oct(&[0x03; 16]),
+                kasme: oct(&[0x04; 32]),
+                extension_container: Some(types::ExtensionContainer::default()),
+            }]),
+            ue_usage_type: Some(oct(&[0x00, 0x00, 0x00, 0x01])),
             ..Default::default()
         };
         res.set_authentication_set_list(AuthenticationSetList::TripletList(triplets.clone()));
@@ -499,7 +505,7 @@ mod tests {
         // The vectors absent while later members are present: the shape that
         // an untagged optional CHOICE could not decode.
         round_trip(&SendAuthenticationInfoRes {
-            ue_usage_type: Some(1.into()),
+            ue_usage_type: Some(oct(&[0x00, 0x00, 0x00, 0x01])),
             ..Default::default()
         });
     }
@@ -534,12 +540,12 @@ mod tests {
             network_access_mode: Some(NetworkAccessMode::OnlyPacket),
             lmu_indicator: Some(()),
             ist_alert_timer: Some(30.into()),
-            charging_characteristics: Some(bits(&[true, false, false, false])),
+            charging_characteristics: Some(oct(&[0x08, 0x00])),
             ics_indicator: Some(true),
             sgsn_number: Some(SC_ADDR.into()),
             mdt_user_consent: Some(false),
             additional_msisdn: Some(MSISDN.into()),
-            ue_usage_type: Some(2.into()),
+            ue_usage_type: Some(oct(&[0x00, 0x00, 0x00, 0x02])),
             iab_operation_allowed_indicator: Some(()),
             ..Default::default()
         });
@@ -703,6 +709,7 @@ mod tests {
             clip_data: Some(opaque()),
             clir_data: Some(opaque()),
             ect_data: Some(opaque()),
+            service_centre_address: Some(SC_ADDR.into()),
         });
     }
 
@@ -721,7 +728,9 @@ mod tests {
             sgsn_capability: Some(opaque()),
             inform_previous_network_entity: Some(()),
             ps_lcs_not_supported_by_ue: Some(()),
-            eps_info: Some(types::Opaque::new(vec![0xA0, 0x00])),
+            eps_info: Some(operations::gprs_location::EpsInfo::IsrInformation(bits(&[
+                true, false, true,
+            ]))),
             used_rat_type: Some(4.into()),
             sms_only: Some(()),
             sgsn_name: Some(oct(b"sgsn.example.net")),
@@ -1347,7 +1356,7 @@ mod tests {
             group_key: Some(oct(&[0x11; 8])),
             priority: Some(2.into()),
             uplink_free: Some(()),
-            vstk_rand: Some(bits(&[true, false, true, false, true])),
+            vstk_rand: Some(oct(&[0x01, 0x02, 0x03, 0x04, 0x50])),
             uplink_reply_indicator: Some(()),
             ..PrepareGroupCallArg::new(
                 oct(&[0x11]),

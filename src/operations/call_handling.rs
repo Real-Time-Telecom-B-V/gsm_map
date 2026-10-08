@@ -570,9 +570,15 @@ impl StatusReportArg {
 }
 
 /// StatusReport-Res (op 74).
+///
+/// ```asn1
+/// StatusReportRes ::= SEQUENCE {
+///     extensionContainer  [0] ExtensionContainer OPTIONAL,
+///     ... }
+/// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct StatusReportRes {
-    #[rasn(tag(context, 3))]
+    #[rasn(tag(context, 0))]
     pub extension_container: Option<ExtensionContainer>,
 }
 

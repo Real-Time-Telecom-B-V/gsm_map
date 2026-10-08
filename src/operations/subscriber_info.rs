@@ -510,7 +510,8 @@ impl AnyTimeModificationArg {
 ///     ch-Data                 [5] CallHoldData OPTIONAL,
 ///     clip-Data               [6] ClipData OPTIONAL,
 ///     clir-Data               [7] ClirData OPTIONAL,
-///     ect-data                [8] EctData OPTIONAL }
+///     ect-data                [8] EctData OPTIONAL,
+///     serviceCentreAddress    [9] AddressString OPTIONAL }
 /// ```
 ///
 /// `ss-InfoFor-CSE` is a CHOICE, so `[0]` is an **explicit** tag. For an
@@ -536,6 +537,8 @@ pub struct AnyTimeModificationRes {
     pub clir_data: Option<Opaque>,
     #[rasn(tag(context, 8))]
     pub ect_data: Option<Opaque>,
+    #[rasn(tag(context, 9))]
+    pub service_centre_address: Option<crate::types::AddressString>,
 }
 
 /// Operation codes for this group. Re-exported from [`crate::types::op_codes`],
