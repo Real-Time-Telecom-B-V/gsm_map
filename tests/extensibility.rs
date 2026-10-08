@@ -298,3 +298,120 @@ fn a_modelled_member_that_does_not_decode_is_not_an_extension() {
     let error = refused::<RoutingInfoForSmArg>(&wire);
     assert!(error.contains("sm_rp_mti"), "{error}");
 }
+
+// ── Extensible ENUMERATED types ─────────────────────────────────────────────
+//
+// Clause 17.1.4 covers them with the same sentence as SEQUENCE: a value after
+// the marker that the receiver does not know may not be rejected. What the
+// receiver does with it differs per type and is written next to the type in
+// the ASN.1, so the value is handed to the caller.
+
+#[test]
+fn an_unknown_value_of_an_extensible_enumerated_is_kept() {
+    use gsm_map::operations::sri_sm::SmDeliveryNotIntended;
+
+    // sm-deliveryNotIntended [10] with the value 2; the type defines 0 and 1
+    // and then "...".
+    //   8a 01 02
+    let wire = vector(&format!("30 16 {REQUEST} 8a 01 02"));
+    let value: RoutingInfoForSmArg = common::accepted(&wire);
+    let not_intended = value.sm_delivery_not_intended.unwrap();
+    assert_eq!(not_intended, SmDeliveryNotIntended::Unrecognised(2));
+    assert!(!not_intended.is_recognised());
+    assert_eq!(gsm_map::encode(&value).unwrap(), wire);
+
+    // A value with a name decodes to the name.
+    let wire = vector(&format!("30 16 {REQUEST} 8a 01 01"));
+    let value: RoutingInfoForSmArg = common::accepted(&wire);
+    assert_eq!(
+        value.sm_delivery_not_intended,
+        Some(SmDeliveryNotIntended::OnlyMccMncRequested)
+    );
+}
+
+#[test]
+fn an_unnamed_value_holding_a_named_number_is_the_named_value_on_the_wire() {
+    use gsm_map::operations::sri_sm::SmDeliveryNotIntended;
+
+    let unnamed = SmDeliveryNotIntended::Unrecognised(1);
+    assert!(unnamed.is_recognised());
+    assert_eq!(unnamed.value(), 1);
+    assert_eq!(
+        gsm_map::encode(&unnamed).unwrap(),
+        gsm_map::encode(&SmDeliveryNotIntended::OnlyMccMncRequested).unwrap()
+    );
+    assert_eq!(
+        gsm_map::decode::<SmDeliveryNotIntended>(&[0x0a, 0x01, 0x01]).unwrap(),
+        SmDeliveryNotIntended::OnlyMccMncRequested
+    );
+}
+
+#[test]
+fn cancel_location_keeps_an_unknown_cancellation_type() {
+    use gsm_map::operations::location::{CancelLocationArg, CancellationType, Identity};
+
+    // a3 0d                               CancelLocationArg ::= [3] SEQUENCE
+    //    04 08 00 01 01 21 43 65 87 f9    identity: imsi
+    //    0a 01 07                         cancellationType 7 (0 to 2 are defined)
+    let wire = vector("a3 0d 04 08 00 01 01 21 43 65 87 f9 0a 01 07");
+    let value: CancelLocationArg = common::accepted(&wire);
+    assert_eq!(value.identity, Identity::Imsi(common::IMSI.to_vec().into()));
+    assert_eq!(
+        value.cancellation_type,
+        Some(CancellationType::Unrecognised(7))
+    );
+
+    let wire = vector("a3 0d 04 08 00 01 01 21 43 65 87 f9 0a 01 02");
+    let value: CancelLocationArg = common::accepted(&wire);
+    assert_eq!(
+        value.cancellation_type,
+        Some(CancellationType::InitialAttachProcedure)
+    );
+}
+
+#[test]
+fn every_extensible_enumerated_maps_its_numbers_both_ways() {
+    use gsm_map::operations::lcs::LcsEvent;
+    use gsm_map::operations::location::CancellationType;
+    use gsm_map::operations::subscriber_data::NetworkAccessMode;
+
+    for value in 0..=5 {
+        assert!(LcsEvent::from_value(value).is_recognised(), "{value}");
+        assert_eq!(LcsEvent::from_value(value).value(), value);
+    }
+    assert_eq!(LcsEvent::from_value(5), LcsEvent::EmergencyCallHandover);
+    assert_eq!(LcsEvent::from_value(6), LcsEvent::Unrecognised(6));
+    assert_eq!(
+        NetworkAccessMode::from_value(2),
+        NetworkAccessMode::OnlyPacket
+    );
+    assert_eq!(
+        NetworkAccessMode::from_value(3),
+        NetworkAccessMode::Unrecognised(3)
+    );
+    assert_eq!(
+        CancellationType::from_value(-1),
+        CancellationType::Unrecognised(-1)
+    );
+    // Untagged, the type is a universal ENUMERATED (0a), not an INTEGER (02).
+    assert_eq!(
+        gsm_map::encode(&LcsEvent::EmergencyCallHandover).unwrap(),
+        [0x0a, 0x01, 0x05]
+    );
+    assert!(gsm_map::decode::<LcsEvent>(&[0x02, 0x01, 0x05]).is_err());
+}
+
+#[test]
+fn an_enumerated_without_a_marker_refuses_an_unknown_value() {
+    use gsm_map::operations::report_sm::ReportSmDeliveryStatusArg;
+
+    // SM-DeliveryOutcome ::= ENUMERATED { memoryCapacityExceeded (0),
+    // absentSubscriber (1), successfulTransfer (2) }: no marker.
+    //   30 13  04 07 91 51 55 10 00 99 f9  04 05 91 51 55 10 99  0a 01 03
+    let wire = vector("30 13 04 07 91 51 55 10 00 99 f9 04 05 91 51 55 10 99 0a 01 03");
+    let error = refused::<ReportSmDeliveryStatusArg>(&wire);
+    assert!(error.contains("sm_delivery_outcome"), "{error}");
+
+    let wire = vector("30 13 04 07 91 51 55 10 00 99 f9 04 05 91 51 55 10 99 0a 01 02");
+    common::accepted::<ReportSmDeliveryStatusArg>(&wire);
+}

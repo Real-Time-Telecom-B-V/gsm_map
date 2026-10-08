@@ -27,13 +27,26 @@ pub enum SubscriberStatus {
     OperatorDeterminedBarring = 1,
 }
 
-/// NetworkAccessMode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, AsnType, Decode, Encode)]
-#[rasn(enumerated)]
-pub enum NetworkAccessMode {
-    PacketAndCircuit = 0,
-    OnlyCircuit = 1,
-    OnlyPacket = 2,
+crate::types::extensible_enumerated! {
+    /// NetworkAccessMode.
+    ///
+    /// ```asn1
+    /// NetworkAccessMode ::= ENUMERATED {
+    ///     packetAndCircuit (0),
+    ///     onlyCircuit      (1),
+    ///     onlyPacket       (2),
+    ///     ... }
+    ///     -- if unknown values are received in NetworkAccessMode
+    ///     -- they shall be discarded.
+    /// ```
+    ///
+    /// Extensible: discard an `Unrecognised` value as the comment says, and
+    /// keep the rest of the subscriber data.
+    pub enum NetworkAccessMode {
+        PacketAndCircuit = 0,
+        OnlyCircuit = 1,
+        OnlyPacket = 2,
+    }
 }
 
 /// ODB-Data — operator-determined barring, the subscription flag that decides

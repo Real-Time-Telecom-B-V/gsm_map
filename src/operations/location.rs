@@ -150,13 +150,26 @@ pub enum Identity {
     ImsiWithLmsi(ImsiWithLmsi),
 }
 
-/// CancellationType for cancelLocation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, AsnType, Decode, Encode)]
-#[rasn(enumerated)]
-pub enum CancellationType {
-    UpdateProcedure = 0,
-    SubscriptionWithdraw = 1,
-    InitialAttachProcedure = 2,
+crate::types::extensible_enumerated! {
+    /// CancellationType for cancelLocation.
+    ///
+    /// ```asn1
+    /// CancellationType ::= ENUMERATED {
+    ///     updateProcedure        (0),
+    ///     subscriptionWithdraw   (1),
+    ///     ...,
+    ///     initialAttachProcedure (2) }
+    ///     -- The HLR shall not send values other than listed above
+    /// ```
+    ///
+    /// Extensible. The rule in the comment binds the sender; a receiver still
+    /// may not reject the operation over a value it does not know (clause
+    /// 17.1.4), so such a value arrives as `Unrecognised`.
+    pub enum CancellationType {
+        UpdateProcedure = 0,
+        SubscriptionWithdraw = 1,
+        InitialAttachProcedure = 2,
+    }
 }
 
 /// CancelLocation-Arg (op 3).

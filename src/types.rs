@@ -62,6 +62,96 @@ impl From<i64> for OpenEnumerated {
     }
 }
 
+/// Define an extensible `ENUMERATED` as a Rust enum that keeps a value it
+/// has no name for.
+///
+/// TS 29.002 clause 17.1.4: "An entity supporting a version greater than 1
+/// shall not reject an unsupported extension following "..." of that SEQUENCE
+/// or ENUMERATED data type." A closed Rust enum rejects it, and with it the
+/// whole operation. What a receiver then *does* with the unknown value is laid
+/// down type by type in the ASN.1 comments (discard it, map it onto a named
+/// value, answer with `unexpectedDataValue`), so the value has to reach the
+/// caller: it arrives as `Unrecognised`.
+///
+/// On the wire this is an ordinary ENUMERATED. `Unrecognised` holding the
+/// number of a named value encodes as that value and decodes as the name.
+macro_rules! extensible_enumerated {
+    (
+        $(#[$meta:meta])*
+        pub enum $name:ident {
+            $( $(#[$variant_meta:meta])* $variant:ident = $value:literal ),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum $name {
+            $( $(#[$variant_meta])* $variant, )+
+            /// A value this crate has no name for: one added after the
+            /// extension marker in a later release. Never constructed by the
+            /// decoder for a value that has a name.
+            Unrecognised(i64),
+        }
+
+        impl $name {
+            /// The number on the wire.
+            pub fn value(self) -> i64 {
+                match self {
+                    $( Self::$variant => $value, )+
+                    Self::Unrecognised(value) => value,
+                }
+            }
+
+            /// The named value for a number, or `Unrecognised`.
+            pub fn from_value(value: i64) -> Self {
+                match value {
+                    $( $value => Self::$variant, )+
+                    other => Self::Unrecognised(other),
+                }
+            }
+
+            /// `false` for a value this crate has no name for.
+            pub fn is_recognised(self) -> bool {
+                !matches!(self.normalised(), Self::Unrecognised(_))
+            }
+
+            fn normalised(self) -> Self {
+                Self::from_value(self.value())
+            }
+        }
+
+        impl rasn::AsnType for $name {
+            const TAG: rasn::types::Tag = rasn::types::Tag::ENUMERATED;
+        }
+
+        impl rasn::Encode for $name {
+            fn encode_with_tag_and_constraints<'b, E: rasn::Encoder<'b>>(
+                &self,
+                encoder: &mut E,
+                tag: rasn::types::Tag,
+                constraints: rasn::types::Constraints,
+                identifier: rasn::types::Identifier,
+            ) -> Result<(), E::Error> {
+                encoder
+                    .encode_integer(tag, constraints, &self.value(), identifier)
+                    .map(drop)
+            }
+        }
+
+        impl rasn::Decode for $name {
+            fn decode_with_tag_and_constraints<D: rasn::Decoder>(
+                decoder: &mut D,
+                tag: rasn::types::Tag,
+                constraints: rasn::types::Constraints,
+            ) -> Result<Self, D::Error> {
+                decoder
+                    .decode_integer::<i64>(tag, constraints)
+                    .map(Self::from_value)
+            }
+        }
+    };
+}
+pub(crate) use extensible_enumerated;
+
 /// SignalInfo — an opaque protocol payload, e.g. the SMS TPDU in `sm-RP-UI`.
 pub type SignalInfo = OctetString;
 
