@@ -3,8 +3,8 @@
 //! - sendRoutingInfo (op 22)
 //! - provideRoamingNumber (op 4)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent. The call-control
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not. The call-control
 //! sub-structures are carried as [`Opaque`] and survive the round trip unchanged.
 
 use rasn::prelude::*;
@@ -570,9 +570,15 @@ impl StatusReportArg {
 }
 
 /// StatusReport-Res (op 74).
+///
+/// ```asn1
+/// StatusReportRes ::= SEQUENCE {
+///     extensionContainer  [0] ExtensionContainer OPTIONAL,
+///     ... }
+/// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct StatusReportRes {
-    #[rasn(tag(context, 3))]
+    #[rasn(tag(context, 0))]
     pub extension_container: Option<ExtensionContainer>,
 }
 

@@ -5,14 +5,90 @@
 //! - failureReport (op 25)
 //! - noteMsPresentForGprs (op 26)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent.
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not.
 
 use rasn::prelude::*;
 
 use crate::types::{ExtensionContainer, Imsi, IsdnAddressString, Opaque};
 
 pub use crate::operations::location::GsnAddress;
+
+/// PDN-GW-Identity — the PDN gateway serving an APN.
+///
+/// ```asn1
+/// PDN-GW-Identity ::= SEQUENCE {
+///     pdn-gw-ipv4-Address  [0] PDP-Address OPTIONAL,
+///     pdn-gw-ipv6-Address  [1] PDP-Address OPTIONAL,
+///     pdn-gw-name          [2] FQDN OPTIONAL,
+///     extensionContainer   [3] ExtensionContainer OPTIONAL,
+///     ... }
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
+pub struct PdnGwIdentity {
+    #[rasn(tag(context, 0))]
+    pub pdn_gw_ipv4_address: Option<OctetString>,
+    #[rasn(tag(context, 1))]
+    pub pdn_gw_ipv6_address: Option<OctetString>,
+    #[rasn(tag(context, 2))]
+    pub pdn_gw_name: Option<OctetString>,
+    #[rasn(tag(context, 3))]
+    pub extension_container: Option<ExtensionContainer>,
+}
+
+/// PDN-GW-Update — a new PDN gateway for an APN or a context.
+///
+/// ```asn1
+/// PDN-GW-Update ::= SEQUENCE {
+///     apn                 [0] APN OPTIONAL,
+///     pdn-gw-Identity     [1] PDN-GW-Identity OPTIONAL,
+///     contextId           [2] ContextId OPTIONAL,
+///     extensionContainer  [3] ExtensionContainer OPTIONAL,
+///     ... }
+/// ```
+///
+/// "The pdn-gw-update IE shall include the pdn-gw-Identity, and the apn or/and
+/// the contextID. The HSS shall ignore the eps-info IE if it includes a
+/// pdn-gw-update IE which does not include pdn-gw-Identity."
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
+pub struct PdnGwUpdate {
+    #[rasn(tag(context, 0))]
+    pub apn: Option<OctetString>,
+    #[rasn(tag(context, 1))]
+    pub pdn_gw_identity: Option<PdnGwIdentity>,
+    #[rasn(tag(context, 2))]
+    pub context_id: Option<Integer>,
+    #[rasn(tag(context, 3))]
+    pub extension_container: Option<ExtensionContainer>,
+}
+
+/// EPS-Info — what an S4-SGSN or an MME (through an interworking function)
+/// tells the HSS in updateGprsLocation.
+///
+/// ```asn1
+/// EPS-Info ::= CHOICE {
+///     pdn-gw-update    [0] PDN-GW-Update,
+///     isr-Information  [1] ISR-Information }
+///
+/// ISR-Information ::= BIT STRING {
+///     updateLocation          (0),
+///     cancelSGSN              (1),
+///     initialAttachIndicator  (2) } (SIZE (3..8))
+/// ```
+///
+/// Not extensible: an alternative other than these two is a decoding error.
+// One of these exists per message, so the plain variant is kept over a Box.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum EpsInfo {
+    #[rasn(tag(context, 0))]
+    PdnGwUpdate(PdnGwUpdate),
+    /// Bit 0 is `updateLocation`, bit 1 `cancelSGSN`, bit 2
+    /// `initialAttachIndicator`, numbered from the most significant bit.
+    #[rasn(tag(context, 1))]
+    IsrInformation(BitString),
+}
 
 /// UpdateGprsLocation-Arg (op 23).
 ///
@@ -67,7 +143,7 @@ pub struct UpdateGprsLocationArg {
     #[rasn(tag(context, 4))]
     pub add_info: Option<Opaque>,
     #[rasn(tag(explicit(context, 5)))]
-    pub eps_info: Option<Opaque>,
+    pub eps_info: Option<EpsInfo>,
     #[rasn(tag(context, 6))]
     pub serving_node_type_indicator: Option<()>,
     #[rasn(tag(context, 7))]

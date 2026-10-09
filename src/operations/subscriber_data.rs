@@ -3,9 +3,9 @@
 //! - insertSubscriberData (op 7)
 //! - deleteSubscriberData (op 8)
 //!
-//! Every member TS 29.002 defines is modelled — all 53 of them on the insert
-//! argument — because BER decoding is not tolerant of unmodelled members; see
-//! [`crate`]. The subscription sub-structures themselves (CAMEL, GPRS, EPS, LCS,
+//! Every member TS 29.002 (Rel-18) defines is modelled — all 53 of them on the
+//! insert argument; see [`crate`] on what happens to one from a later release.
+//! The subscription sub-structures themselves (CAMEL, GPRS, EPS, LCS,
 //! ODB, LSA, CSG) are carried as [`Opaque`] and survive the round trip unchanged.
 //!
 //! Neither argument is in ascending tag order: TS 29.002 declares the members
@@ -27,13 +27,26 @@ pub enum SubscriberStatus {
     OperatorDeterminedBarring = 1,
 }
 
-/// NetworkAccessMode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, AsnType, Decode, Encode)]
-#[rasn(enumerated)]
-pub enum NetworkAccessMode {
-    PacketAndCircuit = 0,
-    OnlyCircuit = 1,
-    OnlyPacket = 2,
+crate::types::extensible_enumerated! {
+    /// NetworkAccessMode.
+    ///
+    /// ```asn1
+    /// NetworkAccessMode ::= ENUMERATED {
+    ///     packetAndCircuit (0),
+    ///     onlyCircuit      (1),
+    ///     onlyPacket       (2),
+    ///     ... }
+    ///     -- if unknown values are received in NetworkAccessMode
+    ///     -- they shall be discarded.
+    /// ```
+    ///
+    /// Extensible: discard an `Unrecognised` value as the comment says, and
+    /// keep the rest of the subscriber data.
+    pub enum NetworkAccessMode {
+        PacketAndCircuit = 0,
+        OnlyCircuit = 1,
+        OnlyPacket = 2,
+    }
 }
 
 /// ODB-Data — operator-determined barring, the subscription flag that decides
@@ -131,8 +144,10 @@ pub struct InsertSubscriberDataArg {
     pub cs_allocation_retention_priority: Option<OctetString>,
     #[rasn(tag(context, 17))]
     pub sgsn_camel_subscription_info: Option<Opaque>,
+    /// `ChargingCharacteristics ::= OCTET STRING (SIZE (2))`, coded as in
+    /// TS 32.215.
     #[rasn(tag(context, 18))]
-    pub charging_characteristics: Option<BitString>,
+    pub charging_characteristics: Option<OctetString>,
     #[rasn(tag(context, 19))]
     pub access_restriction_data: Option<BitString>,
     #[rasn(tag(context, 20))]
@@ -171,8 +186,9 @@ pub struct InsertSubscriberDataArg {
     pub adjacent_access_restriction_data_list: Option<Opaque>,
     #[rasn(tag(context, 47))]
     pub imsi_group_id_list: Option<Opaque>,
+    /// `UE-UsageType ::= OCTET STRING (SIZE (4))`, coded as in TS 29.272.
     #[rasn(tag(context, 48))]
-    pub ue_usage_type: Option<Integer>,
+    pub ue_usage_type: Option<OctetString>,
     #[rasn(tag(context, 49))]
     pub user_plane_integrity_protection_indicator: Option<()>,
     #[rasn(tag(context, 50))]

@@ -17,12 +17,18 @@
 //! Each frame's label, direction and member count go to stderr, one line per
 //! frame, for the checker to compare against.
 
+// The hand-derived vectors the integration tests pin the encoder to. Sending
+// the same octets through the dissector closes the triangle: specification,
+// encoder, independent decoder.
+#[path = "../tests/common/spec_vectors.rs"]
+mod spec_vectors;
+
 use gsm_map::address;
 use gsm_map::application_context as ac;
 use gsm_map::dialogue;
 use gsm_map::operations::alert_sc::{AlertServiceCentreArg, SmsGmscAlertEvent};
 use gsm_map::operations::auth::{
-    AuthenticationTriplet, ReSynchronisationInfo, SendAuthenticationInfoArg,
+    AuthenticationTriplet, EpcAv, ReSynchronisationInfo, SendAuthenticationInfoArg,
     SendAuthenticationInfoRes,
 };
 use gsm_map::operations::call_handling::{
@@ -32,7 +38,7 @@ use gsm_map::operations::fault_recovery::{
     ResetArg, RestoreDataArg, RestoreDataRes, SendingNodeNumber,
 };
 use gsm_map::operations::gprs_location::{
-    FailureReportArg, NoteMsPresentForGprsArg, SendRoutingInfoForGprsArg,
+    EpsInfo, FailureReportArg, NoteMsPresentForGprsArg, SendRoutingInfoForGprsArg,
     SendRoutingInfoForGprsRes, UpdateGprsLocationArg, UpdateGprsLocationRes,
 };
 use gsm_map::operations::handover::{
@@ -46,7 +52,7 @@ use gsm_map::operations::lcs::{
 };
 use gsm_map::operations::location::{
     CancelLocationArg, CancellationType, Identity, PurgeMsArg, PurgeMsRes, SendIdentificationArg,
-    UpdateLocationArg, UpdateLocationRes,
+    SendIdentificationRes, UpdateLocationArg, UpdateLocationRes,
 };
 use gsm_map::operations::mo_forward_sm::MoForwardSmArg;
 use gsm_map::operations::mt_forward_sm::MtForwardSmArg;
@@ -182,6 +188,20 @@ fn next_transaction_id() -> Vec<u8> {
     NEXT.fetch_add(1, Ordering::Relaxed).to_be_bytes().to_vec()
 }
 
+/// What the dissection of the next frame has to contain, see [`expect_fields`].
+static EXPECTED_FIELDS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Require the dissection of the **next** frame to contain each of `fields`,
+/// written as tshark prints a member: `"msc-Number: 915155100020f0"`.
+///
+/// Counting members shows that none was dropped. It does not show that a
+/// member arrived under the right name with the right value: an OCTET STRING
+/// encoded as an INTEGER is still one member. These do.
+fn expect_fields(fields: &[&str]) {
+    let mut expected = EXPECTED_FIELDS.lock().expect("field list");
+    expected.extend(fields.iter().map(|field| field.to_string()));
+}
+
 /// Hex-dump one SCCP UDT frame carrying `tcap_bytes`, and record what the
 /// dissector should make of it.
 fn emit_frame(label: &str, direction: &str, members: usize, tcap_bytes: Vec<u8>) {
@@ -192,7 +212,8 @@ fn emit_frame(label: &str, direction: &str, members: usize, tcap_bytes: Vec<u8>)
     );
     let wire = udt.encode().expect("sccp encode");
 
-    eprintln!("{label}\t{direction}\t{members}");
+    let fields = std::mem::take(&mut *EXPECTED_FIELDS.lock().expect("field list"));
+    eprintln!("{label}\t{direction}\t{members}\t{}", fields.join("|"));
     for (i, chunk) in wire.chunks(16).enumerate() {
         let hex: Vec<String> = chunk.iter().map(|b| format!("{b:02x}")).collect();
         println!("{:06x}  {}", i * 16, hex.join(" "));
@@ -249,8 +270,45 @@ fn emit_result(
     );
 }
 
-fn ber(value: &impl rasn::Encode) -> Vec<u8> {
-    rasn::ber::encode(value).expect("BER encode")
+/// Encode a value for a frame. Every vector is also put through the crate's
+/// own decoder, which has to return the same value and meet nothing it does
+/// not know: a vector Wireshark reads and this crate does not would be a
+/// one-way codec.
+fn ber<T>(value: &T) -> Vec<u8>
+where
+    T: rasn::Encode + rasn::Decode + PartialEq + std::fmt::Debug,
+{
+    let encoded = gsm_map::encode(value).expect("BER encode");
+    let decoded = gsm_map::decode_with_extensions::<T>(&encoded)
+        .unwrap_or_else(|error| panic!("{error}: {value:?}"));
+    assert_eq!(
+        &decoded.value, value,
+        "the vector does not decode to itself"
+    );
+    assert_eq!(decoded.unknown_extensions, []);
+    encoded
+}
+
+/// The hand-derived vectors of `tests/common/spec_vectors.rs`, each with the
+/// fields its derivation names. `tests/spec_vectors.rs` proves the encoder
+/// emits these octets; here the dissector has to read them the same way.
+fn spec_vectors() {
+    for vector in spec_vectors::ALL {
+        let compact: String = vector.octets.split_whitespace().collect();
+        let param = hex::decode(compact).expect("spec vector is hex");
+        expect_fields(vector.fields);
+        match vector.kind {
+            spec_vectors::Kind::Argument => {
+                emit(vector.label, vector.code, None, vector.members, param)
+            }
+            spec_vectors::Kind::Result => {
+                emit_result(vector.label, vector.code, None, vector.members, param)
+            }
+            spec_vectors::Kind::ErrorParameter => {
+                emit_error_param(vector.label, vector.code, vector.members, param)
+            }
+        }
+    }
 }
 
 /// An application context, carried on a `Begin` with a trivial invoke: the
@@ -544,13 +602,14 @@ fn error_vectors() {
     emit_error_param(
         "absentSubscriberSmParam",
         error_codes::ABSENT_SUBSCRIBER_SM,
-        5,
+        6,
         ber(&AbsentSubscriberSmParam {
             absent_subscriber_diagnostic_sm: Some(5.into()),
             extension_container: Some(extension_container()),
             additional_absent_subscriber_diagnostic_sm: Some(6.into()),
             imsi: Some(imsi()),
             requested_retransmission_time: Some(oct(&[0x22, 0x01, 0x01, 0x00])),
+            user_identifier_alert: Some(imsi()),
         }),
     );
     emit_error_param(
@@ -1014,7 +1073,7 @@ fn subscriber_info_vectors() {
         "atm_res",
         op_codes::ANY_TIME_MODIFICATION,
         Some(ati.clone()),
-        9,
+        10,
         ber(&AnyTimeModificationRes {
             ss_info_for_cse: Some(opaque_choice()),
             camel_subscription_info: Some(opaque()),
@@ -1025,6 +1084,7 @@ fn subscriber_info_vectors() {
             clip_data: Some(opaque()),
             clir_data: Some(opaque()),
             ect_data: Some(opaque()),
+            service_centre_address: Some(e164(SC_DIGITS)),
         }),
     );
 
@@ -1166,6 +1226,33 @@ fn mobility_vectors() {
         }),
     );
 
+    // sendIdentification's v3 result is a [3] SEQUENCE; without the wrapper
+    // the dissector reads the v2 type and finds nothing it expects.
+    expect_fields(&[
+        "IMSI: 001010123456789",
+        "authenticationSetList: tripletList (0)",
+        "kc: 3333333333333333",
+        "lastUsedLtePLMN-Id: 00f110",
+        "mtCallPendingFlag",
+    ]);
+    emit_result(
+        "send_identification_res",
+        op_codes::SEND_IDENTIFICATION,
+        Some(ac::inter_vlr_info_retrieval_context(ac::V3)),
+        4,
+        ber(&SendIdentificationRes {
+            imsi: Some(imsi()),
+            triplet_list: Some(vec![AuthenticationTriplet {
+                rand: oct(&[0x11; 16]),
+                sres: oct(&[0x22; 4]),
+                kc: oct(&[0x33; 8]),
+            }]),
+            last_used_lte_plmn_id: Some(oct(&[0x00, 0xF1, 0x10])),
+            mt_call_pending_flag: Some(()),
+            ..Default::default()
+        }),
+    );
+
     emit(
         "send_authentication_info_arg",
         op_codes::SEND_AUTHENTICATION_INFO,
@@ -1200,8 +1287,14 @@ fn mobility_vectors() {
                 kc: oct(&[0x33; 8]),
             }]),
             extension_container: Some(extension_container()),
-            eps_authentication_set_list: Some(opaque()),
-            ue_usage_type: Some(1.into()),
+            eps_authentication_set_list: Some(vec![EpcAv {
+                rand: oct(&[0x44; 16]),
+                xres: oct(&[0x55; 8]),
+                autn: oct(&[0x66; 16]),
+                kasme: oct(&[0x77; 32]),
+                extension_container: None,
+            }]),
+            ue_usage_type: Some(oct(&[0x00, 0x00, 0x00, 0x01])),
             ..Default::default()
         }),
     );
@@ -1220,7 +1313,7 @@ fn gprs_vectors() {
             ps_lcs_not_supported_by_ue: Some(()),
             v_gmlc_address: Some(oct(&[10, 0, 0, 1])),
             add_info: Some(opaque()),
-            eps_info: Some(opaque_choice()),
+            eps_info: Some(EpsInfo::IsrInformation(bits(&[true, false, true]))),
             serving_node_type_indicator: Some(()),
             skip_subscriber_data_update: Some(()),
             used_rat_type: Some(4.into()),
@@ -1360,7 +1453,7 @@ fn subscriber_data_vectors() {
             mc_ss_info: Some(opaque()),
             cs_allocation_retention_priority: Some(oct(&[0x01])),
             sgsn_camel_subscription_info: Some(opaque()),
-            charging_characteristics: Some(bits(&[true, false, false, false])),
+            charging_characteristics: Some(oct(&[0x08, 0x00])),
             access_restriction_data: Some(bits(&[true, false])),
             ics_indicator: Some(true),
             ..Default::default()
@@ -1390,7 +1483,7 @@ fn subscriber_data_vectors() {
             pcscf_restoration_request: Some(()),
             adjacent_access_restriction_data_list: Some(opaque()),
             imsi_group_id_list: Some(opaque()),
-            ue_usage_type: Some(2.into()),
+            ue_usage_type: Some(oct(&[0x00, 0x00, 0x00, 0x02])),
             user_plane_integrity_protection_indicator: Some(()),
             dl_buffering_suggested_packet_count: Some(5.into()),
             reset_id_list: Some(opaque()),
@@ -1698,6 +1791,7 @@ fn new_operation_vectors() {
     use gsm_map::operations::call_handling::{
         IstAlertArg, IstAlertRes, ReleaseResourcesArg, RemoteUserFreeArg, RemoteUserFreeRes,
         ResumeCallHandlingArg, SetReportingStateArg, SetReportingStateRes, StatusReportArg,
+        StatusReportRes,
     };
     use gsm_map::operations::group_call::{
         ForwardGroupCallSignallingArg, PrepareGroupCallArg, PrepareGroupCallRes,
@@ -1953,6 +2047,20 @@ fn new_operation_vectors() {
         }),
     );
 
+    // statusReport's result is its extension container on [0]. 1.x and the
+    // first 2.0.0 drafts put it on [3], which the dissector reads as a member
+    // "beyond the end of the known sequence definition".
+    expect_fields(&["extensionContainer"]);
+    emit_result(
+        "status_report_res",
+        op_codes::STATUS_REPORT,
+        None,
+        1,
+        ber(&StatusReportRes {
+            extension_container: Some(extension_container()),
+        }),
+    );
+
     emit(
         "remote_user_free_arg",
         op_codes::REMOTE_USER_FREE,
@@ -2132,7 +2240,7 @@ fn new_operation_vectors() {
             uplink_free: Some(()),
             extension_container: Some(extension_container()),
             vstk: Some(oct(&[0x22; 16])),
-            vstk_rand: Some(bits(&[true, false, true, false, true])),
+            vstk_rand: Some(oct(&[0x01, 0x02, 0x03, 0x04, 0x50])),
             talker_channel_parameter: Some(()),
             uplink_reply_indicator: Some(()),
             ..PrepareGroupCallArg::new(
@@ -2522,4 +2630,5 @@ fn main() {
     new_operation_vectors();
     handover_vectors();
     lcs_vectors();
+    spec_vectors();
 }

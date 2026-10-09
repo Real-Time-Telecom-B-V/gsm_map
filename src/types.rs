@@ -17,31 +17,103 @@ pub type AddressString = OctetString;
 /// LMSI — Local Mobile Subscriber Identity (4 bytes).
 pub type Lmsi = OctetString;
 
-/// An ASN.1 element this crate carries but does not interpret.
+/// A constructed ASN.1 element this crate carries but does not interpret: a
+/// `SEQUENCE`, a `SEQUENCE OF`, or the alternative inside an explicitly tagged
+/// `CHOICE`.
 ///
-/// Modelling a member at all is what keeps the operation decodable: BER decoding
-/// is not tolerant of unmodelled members, so a peer that sends one we skipped
-/// makes the **whole operation** fail rather than just that member come back
-/// empty.
+/// What it holds depends on where it sits, as the tag does in BER:
 ///
-/// Use it only for a **constructed** member at a context tag — a `SEQUENCE`,
-/// a `SEQUENCE OF`, or an explicitly tagged `CHOICE`. Those round-trip byte for
-/// byte. It is the wrong model elsewhere:
+/// * at a **tagged** position (`[n] SomeSequence`) it holds the *content* of
+///   the element, the encodings of its members one after the other. The
+///   element is always emitted constructed, and has to be constructed to be
+///   accepted (X.690 8.9.1), with content that splits into well-formed
+///   elements;
+/// * at an **untagged** position, or behind an explicit tag, it holds the
+///   *whole element* including its own identifier and length.
 ///
-/// * a *primitive* member (`OCTET STRING`, `INTEGER`, `ENUMERATED`) must use its
-///   own Rust type, because re-encoding an opaque value takes the
-///   primitive/constructed bit from the first content byte and would flip it for
-///   a value like `0x25`;
-/// * a `NULL` member must be `Option<()>`, because an opaque value with empty
-///   content re-encodes to nothing at all;
-/// * an *untagged optional* member must be modelled properly, because an opaque
-///   value at an untagged position has no tag to check against and swallows
-///   whatever comes next. (An untagged **mandatory** member is fine: it is
-///   positional, and the whole TLV including its tag is preserved.)
+/// It is the wrong model for three things:
 ///
-/// One documented limit: an uninterpreted constructed member that arrives
-/// **empty** decodes without error but is dropped if the value is re-encoded.
-pub type Opaque = Any;
+/// * a *primitive* member (`OCTET STRING`, `INTEGER`, `ENUMERATED`, `NULL`),
+///   which must use its own Rust type;
+/// * an *untagged optional* member, because an opaque value at an untagged
+///   position has no tag to check against and swallows whatever comes next.
+///   (An untagged **mandatory** member is fine: it is positional.)
+///
+/// `rasn::types::Any` is not a substitute at a tagged position: its encoder
+/// takes the primitive / constructed bit from the first octet of the content,
+/// so a SEQUENCE whose first member is primitive, which is most of them, goes
+/// out with a primitive identifier, and an empty SEQUENCE is not emitted at
+/// all.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Opaque(Any);
+
+impl Opaque {
+    /// Wrap the octets described on the type: the content of the element at
+    /// a tagged position, the whole element at an untagged one.
+    pub fn new(contents: Vec<u8>) -> Self {
+        Self(Any::new(contents))
+    }
+
+    /// The octets carried.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+
+    /// The octets carried, by value.
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.0.into_bytes()
+    }
+}
+
+impl From<Vec<u8>> for Opaque {
+    fn from(contents: Vec<u8>) -> Self {
+        Self::new(contents)
+    }
+}
+
+impl AsnType for Opaque {
+    // As for an open type: no tag of its own.
+    const TAG: Tag = Tag::EOC;
+}
+
+impl Encode for Opaque {
+    fn encode_with_tag_and_constraints<'b, E: Encoder<'b>>(
+        &self,
+        encoder: &mut E,
+        tag: Tag,
+        _: Constraints,
+        identifier: Identifier,
+    ) -> Result<(), E::Error> {
+        if tag == Tag::EOC {
+            encoder.encode_any(tag, &self.0, identifier).map(drop)
+        } else {
+            // `[n]` constructed, around the content exactly as carried.
+            encoder
+                .encode_explicit_prefix(tag, &self.0, identifier)
+                .map(drop)
+        }
+    }
+}
+
+impl Decode for Opaque {
+    fn decode_with_tag_and_constraints<D: Decoder>(
+        decoder: &mut D,
+        tag: Tag,
+        _: Constraints,
+    ) -> Result<Self, D::Error> {
+        if tag == Tag::EOC {
+            return decoder.decode_any(tag).map(Self);
+        }
+        // Read as a SEQUENCE OF open types: the element has to be
+        // constructed and every element inside it well formed.
+        let members: Vec<Any> = decoder.decode_sequence_of(tag, Constraints::default())?;
+        let mut contents = Vec::new();
+        for member in &members {
+            contents.extend_from_slice(member.as_bytes());
+        }
+        Ok(Self::new(contents))
+    }
+}
 
 /// An `ENUMERATED` this crate carries as an integer rather than a closed Rust
 /// enum, because TS 29.002 keeps extending the type and a value added in a later
@@ -61,6 +133,96 @@ impl From<i64> for OpenEnumerated {
         Self(value.into())
     }
 }
+
+/// Define an extensible `ENUMERATED` as a Rust enum that keeps a value it
+/// has no name for.
+///
+/// TS 29.002 clause 17.1.4: "An entity supporting a version greater than 1
+/// shall not reject an unsupported extension following "..." of that SEQUENCE
+/// or ENUMERATED data type." A closed Rust enum rejects it, and with it the
+/// whole operation. What a receiver then *does* with the unknown value is laid
+/// down type by type in the ASN.1 comments (discard it, map it onto a named
+/// value, answer with `unexpectedDataValue`), so the value has to reach the
+/// caller: it arrives as `Unrecognised`.
+///
+/// On the wire this is an ordinary ENUMERATED. `Unrecognised` holding the
+/// number of a named value encodes as that value and decodes as the name.
+macro_rules! extensible_enumerated {
+    (
+        $(#[$meta:meta])*
+        pub enum $name:ident {
+            $( $(#[$variant_meta:meta])* $variant:ident = $value:literal ),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum $name {
+            $( $(#[$variant_meta])* $variant, )+
+            /// A value this crate has no name for: one added after the
+            /// extension marker in a later release. Never constructed by the
+            /// decoder for a value that has a name.
+            Unrecognised(i64),
+        }
+
+        impl $name {
+            /// The number on the wire.
+            pub fn value(self) -> i64 {
+                match self {
+                    $( Self::$variant => $value, )+
+                    Self::Unrecognised(value) => value,
+                }
+            }
+
+            /// The named value for a number, or `Unrecognised`.
+            pub fn from_value(value: i64) -> Self {
+                match value {
+                    $( $value => Self::$variant, )+
+                    other => Self::Unrecognised(other),
+                }
+            }
+
+            /// `false` for a value this crate has no name for.
+            pub fn is_recognised(self) -> bool {
+                !matches!(self.normalised(), Self::Unrecognised(_))
+            }
+
+            fn normalised(self) -> Self {
+                Self::from_value(self.value())
+            }
+        }
+
+        impl rasn::AsnType for $name {
+            const TAG: rasn::types::Tag = rasn::types::Tag::ENUMERATED;
+        }
+
+        impl rasn::Encode for $name {
+            fn encode_with_tag_and_constraints<'b, E: rasn::Encoder<'b>>(
+                &self,
+                encoder: &mut E,
+                tag: rasn::types::Tag,
+                constraints: rasn::types::Constraints,
+                identifier: rasn::types::Identifier,
+            ) -> Result<(), E::Error> {
+                encoder
+                    .encode_integer(tag, constraints, &self.value(), identifier)
+                    .map(drop)
+            }
+        }
+
+        impl rasn::Decode for $name {
+            fn decode_with_tag_and_constraints<D: rasn::Decoder>(
+                decoder: &mut D,
+                tag: rasn::types::Tag,
+                constraints: rasn::types::Constraints,
+            ) -> Result<Self, D::Error> {
+                decoder
+                    .decode_integer::<i64>(tag, constraints)
+                    .map(Self::from_value)
+            }
+        }
+    };
+}
+pub(crate) use extensible_enumerated;
 
 /// SignalInfo — an opaque protocol payload, e.g. the SMS TPDU in `sm-RP-UI`.
 pub type SignalInfo = OctetString;
@@ -87,16 +249,15 @@ pub type DiameterIdentity = OctetString;
 /// ```
 ///
 /// Both members are carried **opaquely** — the crate never generates private
-/// extensions and does not interpret an inbound one. Modelling the container at
-/// all is what matters: BER decoding is not tolerant of unmodelled members, so
-/// a peer that sends an `extensionContainer` we have not modelled makes the
-/// **whole operation** fail to decode, not just that member.
+/// extensions and does not interpret an inbound one. The container is itself
+/// extensible: [`crate::decode`] skips a member after these two and reports
+/// it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct ExtensionContainer {
     #[rasn(tag(context, 0))]
-    pub private_extension_list: Option<Any>,
+    pub private_extension_list: Option<Opaque>,
     #[rasn(tag(context, 1))]
-    pub pcs_extensions: Option<Any>,
+    pub pcs_extensions: Option<Opaque>,
 }
 
 /// NetworkNodeDiameterAddress — TS 29.002 MAP-CommonDataTypes.
@@ -523,5 +684,91 @@ impl fmt::Display for SmRpOa {
             Self::ServiceCentreAddressOa(addr) => write!(f, "SC-Addr({})", hex::encode(addr)),
             Self::NoSmRpOa(()) => write!(f, "NoSmRpOa"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Eq, AsnType, Decode, Encode)]
+    struct Holder {
+        #[rasn(tag(context, 3))]
+        tagged: Option<Opaque>,
+        #[rasn(tag(explicit(context, 4)))]
+        choice: Option<Opaque>,
+    }
+
+    fn round_trip(value: &Holder, expected: &[u8]) {
+        assert_eq!(crate::encode(value).unwrap(), expected);
+        assert_eq!(&crate::decode::<Holder>(expected).unwrap(), value);
+    }
+
+    #[test]
+    fn an_opaque_member_is_constructed_whatever_its_content_starts_with() {
+        // Content starting with a primitive element, a constructed one, and
+        // no content at all.
+        for (content, expected) in [
+            (
+                vec![0x80, 0x01, 0x2a],
+                vec![0x30, 0x05, 0xa3, 0x03, 0x80, 0x01, 0x2a],
+            ),
+            (vec![0x30, 0x00], vec![0x30, 0x04, 0xa3, 0x02, 0x30, 0x00]),
+            (vec![], vec![0x30, 0x02, 0xa3, 0x00]),
+        ] {
+            let value = Holder {
+                tagged: Some(Opaque::new(content)),
+                choice: None,
+            };
+            round_trip(&value, &expected);
+        }
+    }
+
+    #[test]
+    fn an_opaque_member_keeps_several_elements_and_long_lengths() {
+        // [0], then [1] holding 128 octets, which needs the long length form.
+        let mut content = vec![0x80, 0x01, 0x01, 0xa1, 0x81, 0x80];
+        for _ in 0..64 {
+            content.extend_from_slice(&[0x05, 0x00]);
+        }
+        let value = Holder {
+            tagged: Some(Opaque::new(content.clone())),
+            choice: None,
+        };
+        let encoded = crate::encode(&value).unwrap();
+        assert_eq!(&encoded[..6], [0x30, 0x81, 0x89, 0xa3, 0x81, 0x86]);
+        let decoded = crate::decode::<Holder>(&encoded).unwrap();
+        assert_eq!(decoded.tagged.unwrap().into_bytes(), content);
+    }
+
+    #[test]
+    fn a_primitive_element_is_refused_for_an_opaque_member() {
+        assert!(crate::decode::<Holder>(&[0x30, 0x05, 0x83, 0x03, 0x80, 0x01, 0x2a]).is_err());
+        // Content that is not a run of well-formed elements.
+        assert!(crate::decode::<Holder>(&[0x30, 0x05, 0xa3, 0x03, 0x80, 0x05, 0x2a]).is_err());
+    }
+
+    #[test]
+    fn behind_an_explicit_tag_an_opaque_value_is_the_whole_element() {
+        let value = Holder {
+            tagged: None,
+            choice: Some(Opaque::new(vec![0x81, 0x01, 0x07])),
+        };
+        round_trip(&value, &[0x30, 0x05, 0xa4, 0x03, 0x81, 0x01, 0x07]);
+        // Two elements behind an explicit tag are one too many.
+        assert!(crate::decode::<Holder>(&[
+            0x30, 0x08, 0xa4, 0x06, 0x81, 0x01, 0x07, 0x82, 0x01, 0x08
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn an_indefinite_length_opaque_member_is_carried_without_its_end_marker() {
+        // a3 80 80 01 2a 00 00
+        let wire = [
+            0x30, 0x80, 0xa3, 0x80, 0x80, 0x01, 0x2a, 0x00, 0x00, 0x00, 0x00,
+        ];
+        let decoded = crate::decode::<Holder>(&wire).unwrap();
+        assert_eq!(decoded.tagged.unwrap().as_bytes(), [0x80, 0x01, 0x2a]);
     }
 }

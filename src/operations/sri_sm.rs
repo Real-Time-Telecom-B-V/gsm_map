@@ -3,11 +3,11 @@
 //! Used by the SMS-GMSC to query the HLR for the IMSI and serving MSC/SGSN
 //! address of the SMS recipient.
 //!
-//! Both types model **every** member TS 29.002 defines, including the ones this
-//! crate has no use for. That is not completeness for its own sake: BER decoding
-//! here is not tolerant of unmodelled members, so a peer that sends a member we
-//! skipped makes the whole operation fail to decode rather than just that member
-//! come back empty. Members we do not interpret are carried opaquely.
+//! Both types model **every** member TS 29.002 (Rel-18) defines, including the
+//! ones this crate has no use for; members it does not interpret are carried
+//! opaquely. Decode with [`crate::decode`]: a serving node that is on the wire
+//! and cannot be read is then an error rather than a shorter answer, and a
+//! member from a later release is skipped and reported.
 
 use rasn::prelude::*;
 
@@ -19,18 +19,22 @@ use crate::types::{
 /// alertServiceCentre arguments, so it lives in [`crate::types`].
 pub use crate::types::CorrelationId;
 
-/// SM-DeliveryNotIntended — the GMSC only wants routing data, not a delivery.
-///
-/// ```asn1
-/// SM-DeliveryNotIntended ::= ENUMERATED {
-///     onlyIMSI-requested    (0),
-///     onlyMCC-MNC-requested (1) }
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, AsnType, Decode, Encode)]
-#[rasn(enumerated)]
-pub enum SmDeliveryNotIntended {
-    OnlyImsiRequested = 0,
-    OnlyMccMncRequested = 1,
+crate::types::extensible_enumerated! {
+    /// SM-DeliveryNotIntended — the GMSC only wants routing data, not a delivery.
+    ///
+    /// ```asn1
+    /// SM-DeliveryNotIntended ::= ENUMERATED {
+    ///     onlyIMSI-requested    (0),
+    ///     onlyMCC-MNC-requested (1),
+    ///     ... }
+    /// ```
+    ///
+    /// Extensible, and TS 29.002 gives no exception handling for it: a value a
+    /// later release adds arrives as `Unrecognised` and the receiver decides.
+    pub enum SmDeliveryNotIntended {
+        OnlyImsiRequested = 0,
+        OnlyMccMncRequested = 1,
+    }
 }
 
 /// IP-SM-GW-Guidance — delivery-timer guidance from an IP-SM-GW-served HLR.

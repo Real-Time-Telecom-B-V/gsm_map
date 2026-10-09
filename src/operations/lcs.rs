@@ -4,23 +4,43 @@
 //! - sendRoutingInfoForLCS (op 85)
 //! - subscriberLocationReport (op 86)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent. The positioning
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not. The positioning
 //! sub-structures are carried as [`Opaque`] and survive the round trip unchanged.
 
 use rasn::prelude::*;
 
 use crate::types::{ExtensionContainer, Imsi, IsdnAddressString, Lmsi, Opaque};
 
-/// LCS-Event — why a location report is being sent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, AsnType, Decode, Encode)]
-#[rasn(enumerated)]
-pub enum LcsEvent {
-    EmergencyCallOrigination = 0,
-    EmergencyCallRelease = 1,
-    MoLr = 2,
-    DeferredMtLrResponse = 3,
-    DeferredMoLrTttpInitiation = 4,
+crate::types::extensible_enumerated! {
+    /// LCS-Event — why a location report is being sent.
+    ///
+    /// ```asn1
+    /// LCS-Event ::= ENUMERATED {
+    ///     emergencyCallOrigination    (0),
+    ///     emergencyCallRelease        (1),
+    ///     mo-lr                       (2),
+    ///     ...,
+    ///     deferredmt-lrResponse       (3),
+    ///     deferredmo-lrTTTPInitiation (4),
+    ///     emergencyCallHandover       (5) }
+    ///     -- exception handling:
+    ///     -- a SubscriberLocationReport-Arg containing an unrecognized LCS-Event
+    ///     -- shall be rejected by a receiver with a return error cause of
+    ///     -- unexpected data value
+    /// ```
+    ///
+    /// Extensible. The rejection the comment asks for is a MAP error the
+    /// receiver returns, so the report has to decode first: an unknown event
+    /// arrives as `Unrecognised` and the caller answers `unexpectedDataValue`.
+    pub enum LcsEvent {
+        EmergencyCallOrigination = 0,
+        EmergencyCallRelease = 1,
+        MoLr = 2,
+        DeferredMtLrResponse = 3,
+        DeferredMoLrTttpInitiation = 4,
+        EmergencyCallHandover = 5,
+    }
 }
 
 /// SubscriberIdentity for LCS — a CHOICE, so a `[n]` on it is **explicit**.

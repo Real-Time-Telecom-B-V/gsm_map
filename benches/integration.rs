@@ -133,14 +133,14 @@ fn bench_integration(c: &mut Criterion) {
 
     // ── SRI-SM through the whole stack ──
     let sri_arg = sri_sm_arg();
-    let sri_param = rasn::ber::encode(&sri_arg).expect("encode sri arg");
+    let sri_param = gsm_map::encode(&sri_arg).expect("encode sri arg");
     let sri_wire = build_stack(op_codes::SEND_ROUTING_INFO_FOR_SM, sri_param.clone());
 
     g.bench_function("sri_sm/encode_full_stack", |b| {
         b.iter_batched(
             || sri_arg.clone(),
             |arg| {
-                let param = rasn::ber::encode(&arg).unwrap();
+                let param = gsm_map::encode(&arg).unwrap();
                 build_stack(op_codes::SEND_ROUTING_INFO_FOR_SM, param)
             },
             BatchSize::SmallInput,
@@ -150,20 +150,20 @@ fn bench_integration(c: &mut Criterion) {
     g.bench_function("sri_sm/decode_full_stack", |b| {
         b.iter(|| {
             let param = parse_stack(&sri_wire);
-            rasn::ber::decode::<RoutingInfoForSmArg>(&param).unwrap()
+            gsm_map::decode::<RoutingInfoForSmArg>(&param).unwrap()
         })
     });
 
     // ── MO-ForwardSM through the whole stack ──
     let mo_arg = mo_forward_sm_arg();
-    let mo_param = rasn::ber::encode(&mo_arg).expect("encode mo arg");
+    let mo_param = gsm_map::encode(&mo_arg).expect("encode mo arg");
     let mo_wire = build_stack(op_codes::MO_FORWARD_SM, mo_param.clone());
 
     g.bench_function("mo_forward_sm/encode_full_stack", |b| {
         b.iter_batched(
             || mo_arg.clone(),
             |arg| {
-                let param = rasn::ber::encode(&arg).unwrap();
+                let param = gsm_map::encode(&arg).unwrap();
                 build_stack(op_codes::MO_FORWARD_SM, param)
             },
             BatchSize::SmallInput,
@@ -173,7 +173,7 @@ fn bench_integration(c: &mut Criterion) {
     g.bench_function("mo_forward_sm/decode_full_stack", |b| {
         b.iter(|| {
             let param = parse_stack(&mo_wire);
-            rasn::ber::decode::<MoForwardSmArg>(&param).unwrap()
+            gsm_map::decode::<MoForwardSmArg>(&param).unwrap()
         })
     });
 

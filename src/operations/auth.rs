@@ -2,12 +2,12 @@
 //!
 //! - sendAuthenticationInfo (op 56)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent.
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not.
 
 use rasn::prelude::*;
 
-use crate::types::{ExtensionContainer, Imsi, Opaque, OpenEnumerated};
+use crate::types::{ExtensionContainer, Imsi, OpenEnumerated};
 
 /// SendAuthenticationInfo-Arg (op 56).
 ///
@@ -40,8 +40,13 @@ pub struct SendAuthenticationInfoArg {
     pub re_synchronisation_info: Option<ReSynchronisationInfo>,
     #[rasn(tag(context, 2))]
     pub extension_container: Option<ExtensionContainer>,
-    /// `RequestingNodeType ::= ENUMERATED { vlr(0), sgsn(1), ..., s4-sgsn(2),
-    /// mme(3), mme-sgsn(4) }`.
+    /// `RequestingNodeType ::= ENUMERATED { vlr(0), sgsn(1), ..., s-cscf(2),
+    /// bsf(3), gan-aaa-server(4), wlan-aaa-server(5), mme(16), mme-sgsn(17) }`.
+    ///
+    /// Extensible, with its own exception handling in TS 29.002: "received
+    /// values in the range (6-15) shall be treated as "vlr"; received values
+    /// greater than 17 shall be treated as "sgsn"". The number is carried as
+    /// received and the receiver applies that rule.
     #[rasn(tag(context, 3))]
     pub requesting_node_type: Option<Integer>,
     #[rasn(tag(context, 4))]
@@ -110,6 +115,28 @@ pub struct AuthenticationQuintuplet {
     pub autn: OctetString,
 }
 
+/// EPC-AV — an EPS authentication vector.
+///
+/// ```asn1
+/// EPC-AV ::= SEQUENCE {
+///     rand                RAND,
+///     xres                XRES,
+///     autn                AUTN,
+///     kasme               KASME,
+///     extensionContainer  ExtensionContainer OPTIONAL,
+///     ... }
+/// ```
+///
+/// `RAND` and `AUTN` are 16 octets, `XRES` 4 to 16, `KASME` 32.
+#[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
+pub struct EpcAv {
+    pub rand: OctetString,
+    pub xres: OctetString,
+    pub autn: OctetString,
+    pub kasme: OctetString,
+    pub extension_container: Option<ExtensionContainer>,
+}
+
 /// AuthenticationSetList — CHOICE between triplets and quintuplets.
 ///
 /// ```asn1
@@ -138,7 +165,6 @@ pub enum AuthenticationSetList {
 /// ```
 ///
 /// The response as a whole carries context tag `[3]`.
-/// The response as a whole carries context tag `[3]`.
 ///
 /// `authenticationSetList` is an **untagged optional CHOICE**, which `rasn`
 /// cannot decode in place: with no tag of its own there is nothing to test
@@ -155,10 +181,12 @@ pub struct SendAuthenticationInfoRes {
     #[rasn(tag(context, 1))]
     pub quintuplet_list: Option<Vec<AuthenticationQuintuplet>>,
     pub extension_container: Option<ExtensionContainer>,
+    /// `EPS-AuthenticationSetList ::= SEQUENCE SIZE (1..5) OF EPC-AV`.
     #[rasn(tag(context, 2))]
-    pub eps_authentication_set_list: Option<Opaque>,
+    pub eps_authentication_set_list: Option<Vec<EpcAv>>,
+    /// `UE-UsageType ::= OCTET STRING (SIZE (4))`, coded as in TS 29.272.
     #[rasn(tag(context, 3))]
-    pub ue_usage_type: Option<Integer>,
+    pub ue_usage_type: Option<OctetString>,
 }
 
 impl SendAuthenticationInfoRes {

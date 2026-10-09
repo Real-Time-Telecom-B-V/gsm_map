@@ -49,9 +49,13 @@ fn round_trip<T>(val: &T) -> Vec<u8>
 where
     T: rasn::Decode + rasn::Encode + std::fmt::Debug + PartialEq,
 {
-    let encoded = rasn::ber::encode(val).expect("encode failed");
-    let decoded: T = rasn::ber::decode(&encoded).expect("decode failed");
-    assert_eq!(&decoded, val, "round-trip mismatch");
+    let encoded = gsm_map::encode(val).expect("encode failed");
+    let decoded = gsm_map::decode_with_extensions::<T>(&encoded).expect("decode failed");
+    assert_eq!(&decoded.value, val, "round-trip mismatch");
+    assert_eq!(decoded.unknown_extensions, []);
+    // rasn's own decoder has to agree on everything this crate encodes.
+    let lenient: T = rasn::ber::decode(&encoded).expect("rasn decode failed");
+    assert_eq!(&lenient, val, "rasn disagrees with the crate's decoder");
     encoded
 }
 
@@ -80,7 +84,7 @@ fn sri_sm_response_carries_imsi_and_serving_node() {
             ..LocationInfoWithLmsi::new(MSC_NUM.into())
         },
     );
-    let decoded: RoutingInfoForSmRes = rasn::ber::decode(&round_trip(&res)).unwrap();
+    let decoded: RoutingInfoForSmRes = gsm_map::decode(&round_trip(&res)).unwrap();
     assert_eq!(decoded.imsi, res.imsi);
     assert_eq!(
         decoded.location_info_with_lmsi.network_node_number,
@@ -108,7 +112,7 @@ fn mo_forward_sm_carries_a_submit_tpdu() {
         SmRpOa::MsIsdn(MSISDN.into()),
         submit_tpdu.clone().into(),
     );
-    let decoded: MoForwardSmArg = rasn::ber::decode(&round_trip(&arg)).unwrap();
+    let decoded: MoForwardSmArg = gsm_map::decode(&round_trip(&arg)).unwrap();
     assert_eq!(decoded.sm_rp_ui, oct(&submit_tpdu));
     match decoded.sm_rp_oa {
         SmRpOa::MsIsdn(m) => assert_eq!(m, oct(MSISDN)),
@@ -123,7 +127,7 @@ fn mt_forward_sm_addresses_the_imsi() {
         SmRpOa::ServiceCentreAddressOa(SC_ADDR.into()),
         vec![0x04, 0x0B, 0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9].into(),
     );
-    let decoded: MtForwardSmArg = rasn::ber::decode(&round_trip(&arg)).unwrap();
+    let decoded: MtForwardSmArg = gsm_map::decode(&round_trip(&arg)).unwrap();
     match decoded.sm_rp_da {
         SmRpDa::Imsi(i) => assert_eq!(i, oct(IMSI)),
         other => panic!("expected IMSI destination, got {other}"),
@@ -138,7 +142,7 @@ fn report_sm_delivery_status_outcomes() {
         SmDeliveryOutcome::SuccessfulTransfer,
     ] {
         let arg = ReportSmDeliveryStatusArg::new(MSISDN.into(), SC_ADDR.into(), outcome);
-        let decoded: ReportSmDeliveryStatusArg = rasn::ber::decode(&round_trip(&arg)).unwrap();
+        let decoded: ReportSmDeliveryStatusArg = gsm_map::decode(&round_trip(&arg)).unwrap();
         assert_eq!(decoded.sm_delivery_outcome, outcome);
     }
 }
@@ -151,11 +155,11 @@ fn update_location_round_trips() {
         lmsi: Some(vec![0x00, 0x00, 0x00, 0x01].into()),
         ..UpdateLocationArg::new(IMSI.into(), MSC_NUM.into(), MSC_NUM.into())
     };
-    let decoded: UpdateLocationArg = rasn::ber::decode(&round_trip(&arg)).unwrap();
+    let decoded: UpdateLocationArg = gsm_map::decode(&round_trip(&arg)).unwrap();
     assert_eq!(decoded.imsi, oct(IMSI));
 
     let res = UpdateLocationRes::new(SC_ADDR.into());
-    let decoded: UpdateLocationRes = rasn::ber::decode(&round_trip(&res)).unwrap();
+    let decoded: UpdateLocationRes = gsm_map::decode(&round_trip(&res)).unwrap();
     assert_eq!(decoded.hlr_number, oct(SC_ADDR));
 }
 
@@ -174,7 +178,7 @@ fn send_authentication_info_triplet_vectors() {
         .collect();
     let mut res = SendAuthenticationInfoRes::default();
     res.set_authentication_set_list(AuthenticationSetList::TripletList(triplets));
-    let decoded: SendAuthenticationInfoRes = rasn::ber::decode(&round_trip(&res)).unwrap();
+    let decoded: SendAuthenticationInfoRes = gsm_map::decode(&round_trip(&res)).unwrap();
     match decoded.authentication_set_list().unwrap() {
         AuthenticationSetList::TripletList(t) => assert_eq!(t.len(), 3),
         other => panic!("expected triplet list, got {other:?}"),
@@ -283,7 +287,7 @@ fn any_time_modification_registers_and_deregisters_an_ip_sm_gw() {
         ModificationInstruction::Deactivate,
     ] {
         let arg = atm(Some(registration(instruction)));
-        let decoded: AnyTimeModificationArg = rasn::ber::decode(&round_trip(&arg)).unwrap();
+        let decoded: AnyTimeModificationArg = gsm_map::decode(&round_trip(&arg)).unwrap();
         let data = decoded
             .modification_request_for_ip_sm_gw_data
             .expect("registration survives the round trip");
@@ -319,7 +323,7 @@ fn ip_sm_gw_registration_carries_a_diameter_address() {
         }),
         ..Default::default()
     }));
-    let decoded: AnyTimeModificationArg = rasn::ber::decode(&round_trip(&arg)).unwrap();
+    let decoded: AnyTimeModificationArg = gsm_map::decode(&round_trip(&arg)).unwrap();
     let address = decoded
         .modification_request_for_ip_sm_gw_data
         .and_then(|d| d.ip_sm_gw_diameter_address)
@@ -392,7 +396,7 @@ fn ready_for_sm_tags_the_imsi_as_context_0() {
     let mut legacy = wire.clone();
     legacy[2] = 0x04;
     assert!(
-        rasn::ber::decode::<ReadyForSmArg>(&legacy).is_err(),
+        gsm_map::decode::<ReadyForSmArg>(&legacy).is_err(),
         "the 1.x universal-tag encoding must no longer round-trip"
     );
 }
@@ -421,9 +425,8 @@ fn sri_sm_response_decodes_with_an_extension_container() {
     let extension_container: &[u8] = &[
         0xA4, 0x0C, 0xA0, 0x0A, 0x30, 0x08, 0x06, 0x06, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D,
     ];
-    let decoded: RoutingInfoForSmRes =
-        rasn::ber::decode(&append_member(&wire, extension_container))
-            .expect("an extensionContainer from a real HLR must decode");
+    let decoded: RoutingInfoForSmRes = gsm_map::decode(&append_member(&wire, extension_container))
+        .expect("an extensionContainer from a real HLR must decode");
     assert!(decoded.extension_container.is_some());
     assert_eq!(decoded.imsi, oct(IMSI));
 }
@@ -438,7 +441,7 @@ fn sri_sm_response_decodes_with_ip_sm_gw_guidance() {
         }),
         ..RoutingInfoForSmRes::new(IMSI.into(), LocationInfoWithLmsi::new(MSC_NUM.into()))
     };
-    let decoded: RoutingInfoForSmRes = rasn::ber::decode(&round_trip(&res)).unwrap();
+    let decoded: RoutingInfoForSmRes = gsm_map::decode(&round_trip(&res)).unwrap();
     let guidance = decoded.ip_sm_gw_guidance.expect("ip-sm-gwGuidance");
     assert_eq!(guidance.minimum_delivery_time_value, 30.into());
     assert_eq!(guidance.recommended_delivery_time_value, 300.into());
@@ -457,7 +460,7 @@ fn sri_sm_response_decodes_a_serving_node_diameter_address() {
             ..LocationInfoWithLmsi::new(MSC_NUM.into())
         },
     );
-    let decoded: RoutingInfoForSmRes = rasn::ber::decode(&round_trip(&res)).unwrap();
+    let decoded: RoutingInfoForSmRes = gsm_map::decode(&round_trip(&res)).unwrap();
     let info = decoded.location_info_with_lmsi;
     assert_eq!(
         info.additional_number,
@@ -477,7 +480,7 @@ fn location_info_extension_container_does_not_eat_the_members_after_it() {
     let info = LocationInfoWithLmsi {
         lmsi: Some(vec![0x00, 0x00, 0x00, 0x2A].into()),
         extension_container: Some(ExtensionContainer {
-            private_extension_list: Some(rasn::types::Any::new(vec![
+            private_extension_list: Some(gsm_map::types::Opaque::new(vec![
                 0x30, 0x08, 0x06, 0x06, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D,
             ])),
             pcs_extensions: None,
@@ -488,7 +491,7 @@ fn location_info_extension_container_does_not_eat_the_members_after_it() {
         ..LocationInfoWithLmsi::new(MSC_NUM.into())
     };
     let res = RoutingInfoForSmRes::new(IMSI.into(), info);
-    let decoded: RoutingInfoForSmRes = rasn::ber::decode(&round_trip(&res)).unwrap();
+    let decoded: RoutingInfoForSmRes = gsm_map::decode(&round_trip(&res)).unwrap();
     let info = decoded.location_info_with_lmsi;
     assert!(info.extension_container.is_some());
     assert_eq!(info.gprs_node_indicator, Some(()));
@@ -500,20 +503,22 @@ fn location_info_extension_container_does_not_eat_the_members_after_it() {
 }
 
 #[test]
-fn an_unmodelled_trailing_member_still_fails_loudly() {
-    // Not a wish, a fact worth pinning: rasn 0.28 does not skip members a type
-    // does not model — it fails the whole decode with UnexpectedExtraData. That
-    // is exactly why every member TS 29.002 defines is modelled above, and why
-    // adding one later is a decode-compatibility change, not a cosmetic one.
+fn an_unmodelled_trailing_member_is_skipped_not_fatal() {
+    // rasn 0.28 does not skip members a type does not model: it fails the
+    // whole decode with UnexpectedExtraData. TS 29.002 17.1.4 obliges a
+    // receiver to accept them after the extension marker, and the crate's
+    // decoder does. tests/extensibility.rs has the cases.
     let wire = round_trip(&RoutingInfoForSmArg::new(
         MSISDN.into(),
         true,
         SC_ADDR.into(),
     ));
     // A context [20] member: past everything Rel-18 defines.
-    assert!(
-        rasn::ber::decode::<RoutingInfoForSmArg>(&append_member(&wire, &[0x94, 0x00])).is_err()
-    );
+    let extended = append_member(&wire, &[0x94, 0x00]);
+    assert!(rasn::ber::decode::<RoutingInfoForSmArg>(&extended).is_err());
+    let decoded = gsm_map::decode_with_extensions::<RoutingInfoForSmArg>(&extended).unwrap();
+    assert!(decoded.value.sm_rp_pri);
+    assert_eq!(decoded.unknown_extensions.len(), 1);
 }
 
 // ── Encoder shapes that a round-trip alone would not catch ──────────────────

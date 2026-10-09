@@ -6,8 +6,8 @@
 //! - forwardGroupCallSignalling (op 42)
 //! - sendGroupCallInfo (op 84)
 //!
-//! Every member TS 29.002 defines is modelled; see [`crate`] on why an
-//! unmodelled member is fatal rather than merely absent.
+//! Every member TS 29.002 defines is modelled; see [`crate`] on what
+//! happens to a member that is not.
 
 use rasn::prelude::*;
 
@@ -50,8 +50,10 @@ pub struct PrepareGroupCallArg {
     pub extension_container: Option<ExtensionContainer>,
     #[rasn(tag(context, 5))]
     pub vstk: Option<OctetString>,
+    /// `VSTK-RAND ::= OCTET STRING (SIZE (5))`: the 36-bit value from bit 7 of
+    /// octet 1 to bit 4 of octet 5, the low four bits of octet 5 zero.
     #[rasn(tag(context, 6))]
-    pub vstk_rand: Option<BitString>,
+    pub vstk_rand: Option<OctetString>,
     #[rasn(tag(context, 7))]
     pub talker_channel_parameter: Option<()>,
     #[rasn(tag(context, 8))]

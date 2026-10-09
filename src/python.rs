@@ -60,10 +60,6 @@ create_exception!(
     "GSM MAP protocol / BER codec error (3GPP TS 29.002)."
 );
 
-fn decode_err(e: rasn::error::DecodeError) -> PyErr {
-    MapError::new_err(format!("BER decode error: {e}"))
-}
-
 fn encode_err(e: rasn::error::EncodeError) -> PyErr {
     MapError::new_err(format!("BER encode error: {e}"))
 }
@@ -73,8 +69,13 @@ fn ber_encode<T: rasn::Encode>(val: &T, py: Python<'_>) -> PyResult<Py<PyBytes>>
     Ok(PyBytes::new(py, &bytes).unbind())
 }
 
+/// Decode through the crate's own decoder, never through `rasn` directly: a
+/// member or list element that is on the wire and cannot be read raises
+/// `MapError` instead of coming back as absent, as do octets after the value.
+/// Extension additions this crate does not model are skipped, as TS 29.002
+/// 17.1.4 requires.
 fn ber_decode<T: rasn::Decode>(data: &[u8]) -> PyResult<T> {
-    rasn::ber::decode(data).map_err(decode_err)
+    crate::decode(data).map_err(|error| MapError::new_err(error.to_string()))
 }
 
 // ── Shared address / identity types ─────────────────────────────────────────

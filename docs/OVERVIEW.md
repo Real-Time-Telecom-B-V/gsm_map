@@ -15,9 +15,12 @@ argument or result. This crate is exactly those parameters: one Rust type per
 operation, deriving `rasn`'s `AsnType`/`Encode`/`Decode`, so:
 
 ```rust
-let ber = rasn::ber::encode(&arg)?;          // build the Invoke parameter
-let arg: MoForwardSmArg = rasn::ber::decode(&ber)?;  // decode a peer's
+let ber = gsm_map::encode(&arg)?;                    // build the Invoke parameter
+let arg: MoForwardSmArg = gsm_map::decode(&ber)?;    // decode a peer's
 ```
+
+Decode with `gsm_map::decode`, not with `rasn::ber::decode`: see "Decoding"
+below.
 
 The transaction machinery (TIDs, Begin/Continue/End) and the transports below
 (SCCP, M3UA/MTP3, SCTP) live in their own crates; this one owns only the
@@ -67,14 +70,34 @@ message. `scripts/wireshark_check.sh` feeds one maximal instance of every
 operation, as full MAP over TCAP over SCCP frames, to Wireshark's `gsm_map`
 dissector and asserts that an independent decoder names back every member.
 
+## Decoding
+
+`gsm_map::decode` is the crate's own BER decoder (`src/strict.rs`). It
+implements `rasn`'s `Decoder` trait, so the derived types drive it like any
+other, and it differs from `rasn::ber::decode` in the two places where that one
+is unsafe on signalling.
+
+It does not lose data. `rasn` 0.28 reports an OPTIONAL member behind an EXPLICIT
+tag as absent when its content cannot be read, returns a SEQUENCE OF without a
+last element it cannot read, and ignores octets after the value. All three are
+errors here, as are a member that is repeated or out of order and an unknown
+CHOICE alternative.
+
+It does not refuse a newer peer. TS 29.002 17.1.4: "An entity supporting a
+version greater than 1 shall not reject an unsupported extension following
+"..." of that SEQUENCE or ENUMERATED data type." Elements after the last member
+the crate models, in a SEQUENCE with an extension marker, are skipped, and
+`gsm_map::decode_with_extensions` returns them. `CorrelationID` and
+`NetworkNodeDiameterAddress` have no marker and accept nothing extra. An
+extensible ENUMERATED keeps a value it has no name for; the specification says
+per type what a receiver does with it.
+
 ## Modelling members we do not use
 
-BER decoding is not tolerant of unmodelled members: `rasn` fails the whole
-operation rather than skipping a tag it does not know. So every member
-TS 29.002 defines is modelled, even ones with no use here, or one
-`extensionContainer` from a real HLR takes out the entire response. Members the
-crate does not interpret are carried as `types::Opaque` and survive the round
-trip.
+The operations a short message, location or authentication exchange depends on
+model every member TS 29.002 (Rel-18) defines, even ones with no use here.
+Members the crate does not interpret are carried as `types::Opaque`, always
+constructed on the wire, and survive the round trip.
 
 Two consequences worth knowing. BER encodes members in **declaration order**, so
 where TS 29.002 declares a later tag first — `RequestedInfo` puts `[6]` before

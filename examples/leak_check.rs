@@ -110,14 +110,14 @@ fn codec_cycle(iters: usize) {
     };
 
     for _ in 0..iters {
-        let a = rasn::ber::encode(&sri_arg).unwrap();
-        std::hint::black_box(rasn::ber::decode::<RoutingInfoForSmArg>(&a).unwrap());
-        let r = rasn::ber::encode(&sri_res).unwrap();
-        std::hint::black_box(rasn::ber::decode::<RoutingInfoForSmRes>(&r).unwrap());
-        let o = rasn::ber::encode(&mo).unwrap();
-        std::hint::black_box(rasn::ber::decode::<MoForwardSmArg>(&o).unwrap());
-        let t = rasn::ber::encode(&mt).unwrap();
-        std::hint::black_box(rasn::ber::decode::<MtForwardSmArg>(&t).unwrap());
+        let a = gsm_map::encode(&sri_arg).unwrap();
+        std::hint::black_box(gsm_map::decode::<RoutingInfoForSmArg>(&a).unwrap());
+        let r = gsm_map::encode(&sri_res).unwrap();
+        std::hint::black_box(gsm_map::decode::<RoutingInfoForSmRes>(&r).unwrap());
+        let o = gsm_map::encode(&mo).unwrap();
+        std::hint::black_box(gsm_map::decode::<MoForwardSmArg>(&o).unwrap());
+        let t = gsm_map::encode(&mt).unwrap();
+        std::hint::black_box(gsm_map::decode::<MtForwardSmArg>(&t).unwrap());
     }
 }
 
@@ -151,7 +151,7 @@ fn stack_cycle(iters: usize) {
     let arg = RoutingInfoForSmArg::new(sample_msisdn().into(), true, sample_sc_addr().into());
     for _ in 0..iters {
         // encode: MAP → TCAP → SCCP
-        let param = rasn::ber::encode(&arg).unwrap();
+        let param = gsm_map::encode(&arg).unwrap();
         let invoke = Invoke {
             invoke_id: 1,
             linked_id: None,
@@ -174,7 +174,7 @@ fn stack_cycle(iters: usize) {
             let comps = b.components.unwrap();
             if let Component::Invoke(inv) = &comps[0] {
                 let p = inv.parameter.as_ref().unwrap().as_bytes();
-                std::hint::black_box(rasn::ber::decode::<RoutingInfoForSmArg>(p).unwrap());
+                std::hint::black_box(gsm_map::decode::<RoutingInfoForSmArg>(p).unwrap());
             }
         }
     }

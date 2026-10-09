@@ -15,24 +15,46 @@
 //!
 //! Application contexts (v1/v2/v3) are provided for TCAP dialogue negotiation.
 //!
-//! Uses `rasn` for ASN.1 BER encoding/decoding.
+//! The types derive their ASN.1 from `rasn`. Encode with [`encode`] and decode
+//! with [`decode`].
 //!
-//! # Decoding what a peer actually sends
+//! # Decoding what a peer sends
 //!
-//! BER decoding is **not** tolerant of unmodelled members: `rasn` fails the
-//! whole operation with `UnexpectedExtraData` rather than skipping a tag it does
-//! not know. So a type this crate decodes from a peer models every member
-//! TS 29.002 defines, including ones with no use here — otherwise a single
-//! `extensionContainer` from a real HLR takes out the entire response. Members
-//! the crate does not interpret are carried opaquely and survive the round trip.
-//! Adding one later is therefore a decode-compatibility change, not a cosmetic
-//! one.
+//! Always decode with [`decode`] (or [`decode_with_extensions`]), never with
+//! `rasn::ber::decode` on these types. `rasn` 0.28 is unsafe on signalling in
+//! both directions:
+//!
+//! * it **loses data without an error**. An OPTIONAL member behind an
+//!   EXPLICIT tag (in MAP: every CHOICE-typed member behind a context tag)
+//!   whose content it cannot read comes back as absent; a SEQUENCE OF whose
+//!   last element it cannot read comes back without that element; octets after
+//!   the value are ignored. A `RoutingInfoForSM-Res` whose second serving node
+//!   it could not read decodes as an answer with one serving node;
+//! * it **refuses valid messages**. A SEQUENCE carrying a member from a later
+//!   release than this crate models fails to decode, although TS 29.002
+//!   17.1.4 says a receiver "shall not reject an unsupported extension
+//!   following "..."".
+//!
+//! [`decode`] is this crate's own decoder. A member the crate models that
+//! cannot be read is an error, as are a list element that cannot be read, an
+//! unknown CHOICE alternative (no CHOICE in TS 29.002 is extensible), a member
+//! that is repeated or out of order, and trailing octets. Members after the
+//! last one the crate models, in a SEQUENCE that has an extension marker, are
+//! skipped; [`decode_with_extensions`] returns them as [`UnknownExtension`] so
+//! that a peer on a newer release does not go unnoticed. Extensible
+//! ENUMERATED types keep a value they have no name for (an `Unrecognised`
+//! variant or [`types::OpenEnumerated`]), because what a receiver does with it
+//! is specified per type.
+//!
+//! Members the crate does not interpret are carried as [`types::Opaque`] and
+//! survive a round trip.
 
 pub mod address;
 pub mod application_context;
 pub mod dialogue;
 pub mod error;
 pub mod operations;
+mod strict;
 pub mod types;
 
 /// PyO3 bindings (`--features python`). The default crate build is pyo3-free.
@@ -43,10 +65,45 @@ pub mod python;
 pub use python::register;
 
 pub use error::MapError;
+pub use strict::{Decoded, UnknownExtension};
 pub use types::{
     op_codes, operation_name, AddressString, Imsi, IsdnAddressString, Lmsi, LocationInfoWithLmsi,
     SmRpDa, SmRpOa, OPERATION_REGISTRY,
 };
+
+/// BER-encode a MAP operation argument, result or error parameter.
+pub fn encode<T: rasn::Encode>(value: &T) -> Result<Vec<u8>, MapError> {
+    Ok(rasn::ber::encode(value)?)
+}
+
+/// BER-decode a MAP operation argument, result or error parameter. This is
+/// the way to decode anything a peer sent.
+///
+/// `bytes` has to hold exactly one value of `T`. A member this crate models
+/// whose content cannot be read, a list element that cannot be read, an
+/// unknown CHOICE alternative and octets after the value are all errors.
+/// Members a later release of TS 29.002 added after the extension marker of
+/// a SEQUENCE are skipped, as clause 17.1.4 requires; use
+/// [`decode_with_extensions`] to learn that there were any.
+///
+/// Do not call `rasn::ber::decode` on this crate's types for anything that
+/// came off a signalling link. See the crate documentation for what it loses
+/// and what it refuses.
+pub fn decode<T: rasn::Decode>(bytes: &[u8]) -> Result<T, MapError> {
+    Ok(strict::decode(bytes)?.0)
+}
+
+/// [`decode`], also returning the extension additions that were skipped: the
+/// members of an extensible SEQUENCE that this crate does not model. A
+/// receiver that wants to know when a peer speaks a newer release than this
+/// crate reads them here.
+pub fn decode_with_extensions<T: rasn::Decode>(bytes: &[u8]) -> Result<Decoded<T>, MapError> {
+    let (value, unknown_extensions) = strict::decode(bytes)?;
+    Ok(Decoded {
+        value,
+        unknown_extensions,
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -58,6 +115,11 @@ mod tests {
         let encoded = rasn::ber::encode(val).expect("encode failed");
         let decoded: T = rasn::ber::decode(&encoded).expect("decode failed");
         assert_eq!(&decoded, val);
+        // The crate's own decoder has to agree with rasn on everything the
+        // crate itself encodes, and find nothing it does not know.
+        let strict = decode_with_extensions::<T>(&encoded).expect("strict decode failed");
+        assert_eq!(&strict.value, val);
+        assert_eq!(strict.unknown_extensions, []);
     }
 
     fn oct(bytes: &[u8]) -> OctetString {
@@ -429,8 +491,14 @@ mod tests {
             .collect();
         let mut res = SendAuthenticationInfoRes {
             extension_container: Some(types::ExtensionContainer::default()),
-            eps_authentication_set_list: Some(opaque()),
-            ue_usage_type: Some(1.into()),
+            eps_authentication_set_list: Some(vec![operations::auth::EpcAv {
+                rand: oct(&[0x01; 16]),
+                xres: oct(&[0x02; 8]),
+                autn: oct(&[0x03; 16]),
+                kasme: oct(&[0x04; 32]),
+                extension_container: Some(types::ExtensionContainer::default()),
+            }]),
+            ue_usage_type: Some(oct(&[0x00, 0x00, 0x00, 0x01])),
             ..Default::default()
         };
         res.set_authentication_set_list(AuthenticationSetList::TripletList(triplets.clone()));
@@ -458,7 +526,7 @@ mod tests {
         // The vectors absent while later members are present: the shape that
         // an untagged optional CHOICE could not decode.
         round_trip(&SendAuthenticationInfoRes {
-            ue_usage_type: Some(1.into()),
+            ue_usage_type: Some(oct(&[0x00, 0x00, 0x00, 0x01])),
             ..Default::default()
         });
     }
@@ -493,12 +561,12 @@ mod tests {
             network_access_mode: Some(NetworkAccessMode::OnlyPacket),
             lmu_indicator: Some(()),
             ist_alert_timer: Some(30.into()),
-            charging_characteristics: Some(bits(&[true, false, false, false])),
+            charging_characteristics: Some(oct(&[0x08, 0x00])),
             ics_indicator: Some(true),
             sgsn_number: Some(SC_ADDR.into()),
             mdt_user_consent: Some(false),
             additional_msisdn: Some(MSISDN.into()),
-            ue_usage_type: Some(2.into()),
+            ue_usage_type: Some(oct(&[0x00, 0x00, 0x00, 0x02])),
             iab_operation_allowed_indicator: Some(()),
             ..Default::default()
         });
@@ -662,6 +730,7 @@ mod tests {
             clip_data: Some(opaque()),
             clir_data: Some(opaque()),
             ect_data: Some(opaque()),
+            service_centre_address: Some(SC_ADDR.into()),
         });
     }
 
@@ -680,7 +749,9 @@ mod tests {
             sgsn_capability: Some(opaque()),
             inform_previous_network_entity: Some(()),
             ps_lcs_not_supported_by_ue: Some(()),
-            eps_info: Some(types::Opaque::new(vec![0xA0, 0x00])),
+            eps_info: Some(operations::gprs_location::EpsInfo::IsrInformation(bits(&[
+                true, false, true,
+            ]))),
             used_rat_type: Some(4.into()),
             sms_only: Some(()),
             sgsn_name: Some(oct(b"sgsn.example.net")),
@@ -1306,7 +1377,7 @@ mod tests {
             group_key: Some(oct(&[0x11; 8])),
             priority: Some(2.into()),
             uplink_free: Some(()),
-            vstk_rand: Some(bits(&[true, false, true, false, true])),
+            vstk_rand: Some(oct(&[0x01, 0x02, 0x03, 0x04, 0x50])),
             uplink_reply_indicator: Some(()),
             ..PrepareGroupCallArg::new(
                 oct(&[0x11]),

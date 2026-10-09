@@ -17,6 +17,59 @@ Rust surface is untouched, so this is a major bump. The 1.x encodings listed
 under **Fixed** were not conformant; a peer was entitled to reject them, and in
 several cases silently did.
 
+### Decoding
+
+- **A message that used to decode with a member missing is now an error.**
+  The crate had no decode entry point of its own; consumers called
+  `rasn::ber::decode` on its types, and `rasn` 0.28 (0.28.14 and 0.28.15 were
+  checked) loses data without saying so in three places. An OPTIONAL member
+  behind an EXPLICIT tag whose content does not decode is reported as absent;
+  in MAP that is every CHOICE-typed member behind a context tag. A SEQUENCE OF
+  whose last element does not decode is returned without it. Octets after the
+  value are ignored. So a `RoutingInfoForSM-Res` whose `additional-Number` or
+  `thirdNumber` held something unreadable decoded as an answer with one serving
+  node, and the service centre never tried the other; a list of authentication
+  vectors with a malformed last triplet came back one short, and with a single
+  malformed triplet came back empty; an `UpdateGprsLocationArg` with a broken
+  `eps-info` decoded without it. New **`gsm_map::decode`** refuses all of
+  these. It is the crate's own decoder (it implements `rasn::Decoder`, so the
+  derived types drive it unchanged), and it also refuses a member that is
+  repeated or out of order, an unknown CHOICE alternative, and a SEQUENCE,
+  SEQUENCE OF or EXPLICIT tag that is not constructed on the wire. **Decode
+  with `gsm_map::decode`; `rasn::ber::decode` on these types is unsafe for
+  signalling.** `gsm_map::encode` is its counterpart.
+- **A message from a peer on a later release now decodes.** The opposite
+  defect, of the same weight: `rasn` fails a SEQUENCE that carries a member it
+  does not know, and inside a list or behind an explicit tag that failure
+  became the silent loss above (a triplet with one extra member emptied the
+  whole list). TS 29.002 17.1.4 does not allow that: "An entity supporting a
+  version greater than 1 shall not reject an unsupported extension following
+  "..." of that SEQUENCE or ENUMERATED data type." `gsm_map::decode` skips the
+  elements that follow the last member this crate models, in any SEQUENCE that
+  has an extension marker, which in Rel-18 is 320 of 326. `CorrelationID` and
+  `NetworkNodeDiameterAddress` have none and accept nothing extra. Skipping is
+  not silent: **`gsm_map::decode_with_extensions`** returns each skipped
+  element as an `UnknownExtension` (the type that carried it, its tag, its
+  octets). What is not an extension stays an error: a tag the type does model,
+  met after its place, is a repeated or misplaced member, and an unknown
+  alternative of a CHOICE is a mistyped parameter, because no CHOICE in
+  TS 29.002 has a marker.
+- **An unknown value of an extensible ENUMERATED no longer fails the
+  operation.** `SmDeliveryNotIntended`, `CancellationType`, `NetworkAccessMode`
+  and `LcsEvent` were closed Rust enums although their ASN.1 has a marker, so
+  one value from a later release took the whole argument with it. They now
+  have an `Unrecognised(i64)` variant, with `value()`, `from_value()` and
+  `is_recognised()`. The value is handed to the caller rather than mapped,
+  because TS 29.002 says per type what a receiver does: discard it
+  (`NetworkAccessMode`), answer `unexpectedDataValue` (`LCS-Event`), treat it
+  as a named value (`RequestingNodeType`, carried as an integer). `LcsEvent`
+  also gains `EmergencyCallHandover` (5), a Rel-18 value that was refused.
+- **Python decodes through the same decoder**, so `.decode()` raises `MapError`
+  where it used to return a value with a member missing.
+- What the strict decoder costs is measured in `benches/codec.rs`
+  (`decode_cost`): about 0.9 µs against 0.6 µs for a routing answer with three
+  serving nodes, and no difference on insertSubscriberData.
+
 ### Added
 - **Every MAP operation TS 29.002 defines is now in the operation registry** —
   97 codes, each name checked against the dissector — and the ~40 that had no
@@ -101,8 +154,55 @@ several cases silently did.
   [`examples/wireshark_vectors.rs`](examples/wireshark_vectors.rs): emit one
   maximal instance of **every** operation as MAP over TCAP over SCCP and assert
   the dissector names back every member of every frame. Wired into CI.
+- **Hand-derived vectors for the operations a service centre, an IP short
+  message gateway and a location or authentication exchange depend on**
+  ([`tests/common/spec_vectors.rs`](tests/common/spec_vectors.rs)):
+  sendRoutingInfoForSM with both `Additional-Number` alternatives and the
+  IP-SM-GW guidance, mo- and mt-forwardSM, reportSM-DeliveryStatus,
+  alertServiceCentre, informServiceCentre, readyForSM, sendAuthenticationInfo
+  with triplets, quintuplets and EPS vectors, updateLocation,
+  updateGprsLocation with both `EPS-Info` alternatives, cancelLocation,
+  insertSubscriberData, anyTimeModification for IP-SM-GW data, and the error
+  parameters. Each is written out from the ASN.1 with its derivation; the
+  encoder has to emit exactly those octets, the decoder has to read them back,
+  and Wireshark has to print the fields the derivation names. The dissector
+  check now asserts field values as well as member counts, and every vector it
+  emits is decoded again with `gsm_map::decode`.
+- `auth::EpcAv`, and `eps-AuthenticationSetList` as a list of them rather than
+  an opaque element. `gprs_location::EpsInfo`, `PdnGwUpdate` and
+  `PdnGwIdentity`: `eps-info` is modelled, so an alternative it does not have
+  is an error. `userIdentifierAlert [3]` on `AbsentSubscriberSmParam` and
+  `serviceCentreAddress [9]` on `AnyTimeModificationRes`, both Rel-18 members
+  that were missing.
 
 ### Fixed
+- **A SEQUENCE carried opaquely went out with a primitive identifier.**
+  `types::Opaque` was `rasn::types::Any`, whose encoder (rasn 0.28.14) takes
+  the primitive / constructed bit of a tagged value from the first octet of
+  its content. Most SEQUENCEs start with a primitive member, so `add-info`,
+  `vlr-Capability`, `sgsn-Capability` and every other member carried opaquely
+  could be emitted as `8n` where X.690 8.9.1 requires `an`, and an empty one
+  (`pcs-Extensions`) was not emitted at all. rasn 0.28.15 changed the first
+  half of that, so the octets this crate produced depended on the patch
+  version of a dependency. `Opaque` is now a type of its own: always
+  constructed at a tagged position, emitted when empty, and on decoding
+  required to be constructed and to hold well-formed elements. The previous
+  octets are refused (`tests/spec_vectors.rs`). `ExtensionContainer`'s two
+  members are `Opaque` as well.
+- **`ueUsageType` was an INTEGER and `chargingCharacteristics` a BIT STRING.**
+  They are `OCTET STRING (SIZE (4))` and `OCTET STRING (SIZE (2))`. The usage
+  type 1 went out as `83 01 01` instead of `83 04 00 00 00 01` (in
+  `SendAuthenticationInfoRes` and `InsertSubscriberDataArg`), and the charging
+  characteristics went out with a leading count of unused bits,
+  `92 03 00 08 00` instead of `92 02 08 00`, which the dissector read as a
+  different profile. Both are `OctetString` now. A member count could not
+  catch either; the hand-derived vectors did.
+- **`SendIdentificationRes` lacked its `[3]` wrapper**, so the result went out
+  as the version 2 type and a version 3 peer read the IMSI and nothing after
+  it. It also gains `mtCallPendingFlag [5]`. The untagged octets are refused.
+- **`StatusReportRes.extensionContainer` was on `[3]`; it is `[0]`.** Nothing
+  checked it, the result had no vector. `PrepareGroupCallArg.vstk-rand` was a
+  BIT STRING and is an `OCTET STRING (SIZE (5))`.
 - **`operation_name()` mis-spelled two operations.** TS 29.002 (and every
   dissector) says `mo-forwardSM` and `mt-forwardSM`; the crate said
   `mo-ForwardSM` / `mt-ForwardSM`. Anything matching on those strings needs
@@ -120,14 +220,15 @@ several cases silently did.
   constant that is not a MAP error at all, and neither had a name arm;
   `targetCellOutsideGroupCallArea` (42) had a constant and no name. Both
   registries are now table-generated, which makes that impossible.
-- **Every type now models every member TS 29.002 defines.** BER decoding is not
-  tolerant of unmodelled members: `rasn` fails the *whole* operation with
-  `UnexpectedExtraData` rather than skipping a tag it does not know. So a
+- **The types model the members TS 29.002 defines, not a prefix of them.** A
   `RoutingInfoForSM-Res` carrying `[4] extensionContainer` or a serving-node
   Diameter address, an `MT-ForwardSM-Arg` carrying `smsOverIP-OnlyIndicator`, or
   an `InsertSubscriberData-Arg` carrying anything past `[14]` — all of which a
-  Rel-18 peer sends — used to fail outright. Members the crate does not
-  interpret are carried opaquely and survive the round trip.
+  Rel-18 peer sends — used to fail outright, because `rasn` fails the *whole*
+  operation with `UnexpectedExtraData` rather than skipping a tag it does not
+  know. Members the crate does not interpret are carried opaquely and survive
+  the round trip. A member that is still not modelled (see **Known gaps**) is
+  no longer fatal: `gsm_map::decode` skips it and reports it.
 - **CHOICE members were implicitly tagged.** ASN.1 forbids an implicit tag on a
   CHOICE, so `[0] SubscriberIdentity` on `AnyTimeModificationArg` and
   `AnyTimeInterrogationArg`, `targetMS` on both sendRoutingInfoForLCS types,
@@ -194,6 +295,40 @@ several cases silently did.
 - `SubscriberLocationInfo` is renamed `LocationInformation`, after the ASN.1.
 - Nearly every operation type gained public fields, so struct-literal
   construction needs updating. The `new()` constructors above are the short path.
+- `types::Opaque` is a struct, not an alias of `rasn::types::Any`: build one
+  with `Opaque::new(octets)`, read it with `as_bytes()` / `into_bytes()`.
+- `SendAuthenticationInfoRes.eps_authentication_set_list` is a
+  `Vec<EpcAv>`, `UpdateGprsLocationArg.eps_info` an `EpsInfo`, both
+  `ue_usage_type` members and `charging_characteristics` an `OctetString`,
+  `PrepareGroupCallArg.vstk_rand` an `OctetString`.
+- `SmDeliveryNotIntended`, `CancellationType`, `NetworkAccessMode` and
+  `LcsEvent` have an `Unrecognised(i64)` variant and no longer implement
+  `rasn::types::Enumerated`; a `match` on them needs that arm.
+
+### Known gaps
+
+Found by comparing every type with the Rel-18 ASN.1 while writing the vectors
+above, and left for a later release because they are outside the short
+message, location and authentication operations this one pins down. None of
+them loses data any more: a member that is not modelled is skipped by
+`gsm_map::decode` and reported by `decode_with_extensions`.
+
+- Members not modelled: `PurgeMS-Arg` `[2]` to `[4]` (location information),
+  `ProvideSubscriberLocation-Res` `utranCivicAddress [16]`,
+  `SubscriberLocationReport-Arg` `[20]` to `[29]`.
+- The handover types (`prepareHandover`, `sendEndSignal`,
+  `processAccessSignalling`, `forwardAccessSignalling`) are the version 2
+  forms; the version 3 `[3] SEQUENCE` arguments are not modelled.
+- A few members that TS 29.002 makes mandatory are `Option` here and so decode
+  when absent: `gsmSCF-Address` in `AnyTimeSubscriptionInterrogationArg`,
+  `ss-Code` in `EraseCC-EntryRes`, `interrogationType` in `SendRoutingInfoArg`,
+  `callInfo`, `ccbs-Feature` and `translatedB-Number` in `RemoteUserFreeArg`,
+  `ruf-Outcome` in `RemoteUserFreeRes`, `an-APDU` in
+  `PrepareSubsequentHO-Res`.
+- The supplementary-service and LCS operations whose ASN.1 is in TS 24.080
+  were not compared.
+- Private extensions of a version 2 context are skipped only where they follow
+  every member this crate models, which is where a version 2 peer puts them.
 
 ## [1.1.0]
 

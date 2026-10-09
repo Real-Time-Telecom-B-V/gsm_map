@@ -8,8 +8,8 @@
 //!
 //! These carry BSSMAP/RANAP in an `ExternalSignalInfo`, so the interesting
 //! content is opaque to MAP by design. Every member TS 29.002 defines is
-//! modelled; see [`crate`] on why an unmodelled member is fatal rather than
-//! merely absent.
+//! modelled; see [`crate`] on what happens to a member that is
+//! not.
 
 use rasn::prelude::*;
 
