@@ -42,14 +42,7 @@ fn sample_sc_addr() -> Vec<u8> {
 }
 
 fn sri_sm_arg() -> RoutingInfoForSmArg {
-    RoutingInfoForSmArg {
-        msisdn: sample_msisdn().into(),
-        sm_rp_pri: true,
-        service_centre_address: sample_sc_addr().into(),
-        gprs_support_indicator: None,
-        sm_rp_mti: None,
-        sm_rp_smea: None,
-    }
+    RoutingInfoForSmArg::new(sample_msisdn().into(), true, sample_sc_addr().into())
 }
 
 fn mo_forward_sm_arg() -> MoForwardSmArg {
@@ -57,12 +50,11 @@ fn mo_forward_sm_arg() -> MoForwardSmArg {
         0x04, 0x0B, 0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9, 0x00, 0x00,
     ];
     ui.extend_from_slice(&[0xAB; 19]);
-    MoForwardSmArg {
-        sm_rp_da: SmRpDa::ServiceCentreAddressDa(sample_sc_addr().into()),
-        sm_rp_oa: SmRpOa::MsIsdn(sample_msisdn().into()),
-        sm_rp_ui: ui.into(),
-        imsi: None,
-    }
+    MoForwardSmArg::new(
+        SmRpDa::ServiceCentreAddressDa(sample_sc_addr().into()),
+        SmRpOa::MsIsdn(sample_msisdn().into()),
+        ui.into(),
+    )
 }
 
 // ── SCCP addressing (synthetic global titles) ───────────────────────────────
@@ -141,14 +133,14 @@ fn bench_integration(c: &mut Criterion) {
 
     // ── SRI-SM through the whole stack ──
     let sri_arg = sri_sm_arg();
-    let sri_param = rasn::ber::encode(&sri_arg).expect("encode sri arg");
+    let sri_param = gsm_map::encode(&sri_arg).expect("encode sri arg");
     let sri_wire = build_stack(op_codes::SEND_ROUTING_INFO_FOR_SM, sri_param.clone());
 
     g.bench_function("sri_sm/encode_full_stack", |b| {
         b.iter_batched(
             || sri_arg.clone(),
             |arg| {
-                let param = rasn::ber::encode(&arg).unwrap();
+                let param = gsm_map::encode(&arg).unwrap();
                 build_stack(op_codes::SEND_ROUTING_INFO_FOR_SM, param)
             },
             BatchSize::SmallInput,
@@ -158,20 +150,20 @@ fn bench_integration(c: &mut Criterion) {
     g.bench_function("sri_sm/decode_full_stack", |b| {
         b.iter(|| {
             let param = parse_stack(&sri_wire);
-            rasn::ber::decode::<RoutingInfoForSmArg>(&param).unwrap()
+            gsm_map::decode::<RoutingInfoForSmArg>(&param).unwrap()
         })
     });
 
     // ── MO-ForwardSM through the whole stack ──
     let mo_arg = mo_forward_sm_arg();
-    let mo_param = rasn::ber::encode(&mo_arg).expect("encode mo arg");
+    let mo_param = gsm_map::encode(&mo_arg).expect("encode mo arg");
     let mo_wire = build_stack(op_codes::MO_FORWARD_SM, mo_param.clone());
 
     g.bench_function("mo_forward_sm/encode_full_stack", |b| {
         b.iter_batched(
             || mo_arg.clone(),
             |arg| {
-                let param = rasn::ber::encode(&arg).unwrap();
+                let param = gsm_map::encode(&arg).unwrap();
                 build_stack(op_codes::MO_FORWARD_SM, param)
             },
             BatchSize::SmallInput,
@@ -181,7 +173,7 @@ fn bench_integration(c: &mut Criterion) {
     g.bench_function("mo_forward_sm/decode_full_stack", |b| {
         b.iter(|| {
             let param = parse_stack(&mo_wire);
-            rasn::ber::decode::<MoForwardSmArg>(&param).unwrap()
+            gsm_map::decode::<MoForwardSmArg>(&param).unwrap()
         })
     });
 

@@ -1,6 +1,6 @@
 [package]
 name = "gsm_map"
-version = "1.1.0"
+version = "2.0.0"
 edition = "2021"
 rust-version = "1.80"
 description = "GSM MAP (Mobile Application Part) operations per 3GPP TS 29.002 — SMS (MO/MT-ForwardSM, SRI-for-SM), mobility, authentication, USSD, supplementary services — as BER-codable ASN.1 types, with optional Rust-backed Python bindings"

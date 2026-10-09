@@ -20,26 +20,67 @@ crate (`cargo add gsm_map`, pyo3-free) and a Rust-backed Python wheel
 
 ```rust
 use gsm_map::operations::sri_sm::RoutingInfoForSmArg;
-use gsm_map::types::*;
 
 // SMS-SC asks the HLR to route a message to a subscriber (sendRoutingInfoForSM).
 // Addresses are TBCD in an OCTET STRING: byte 0 is TON/NPI, the rest are the
 // swapped-nibble digits. This one is the fictional +1 555 0100 999.
-let arg = RoutingInfoForSmArg {
-    msisdn: vec![0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9].into(),
-    sm_rp_pri: true,
-    service_centre_address: vec![0x91, 0x51, 0x55, 0x10, 0x99].into(),
-    gprs_support_indicator: None,
-    sm_rp_mti: None,
-    sm_rp_smea: None,
-};
+// `new` takes the mandatory members; fill an optional one in with
+// `RoutingInfoForSmArg { sm_rp_mti: Some(0.into()), ..RoutingInfoForSmArg::new(..) }`.
+let arg = RoutingInfoForSmArg::new(
+    vec![0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9].into(),
+    true,                                       // sm-RP-PRI
+    vec![0x91, 0x51, 0x55, 0x10, 0x99].into(),  // service centre
+);
 
 // Encode to BER for the TCAP Invoke parameter …
-let ber = rasn::ber::encode(&arg).unwrap();
+let ber = gsm_map::encode(&arg).unwrap();
 // … and the peer decodes it straight back into the typed struct.
-let decoded: RoutingInfoForSmArg = rasn::ber::decode(&ber).unwrap();
+let decoded: RoutingInfoForSmArg = gsm_map::decode(&ber).unwrap();
 assert_eq!(decoded, arg);
 ```
+
+## Decoding: use `gsm_map::decode`
+
+Do not call `rasn::ber::decode` on these types for anything that came off a
+signalling link. `rasn` 0.28 turns "could not read this" into "it was not
+there": an OPTIONAL member behind an EXPLICIT tag whose content does not decode
+comes back as absent, a list whose last element does not decode comes back one
+short, and octets after the value are ignored. A routing answer for a short
+message whose second serving node could not be read then looks complete, and
+the service centre never tries that node. In the other direction it refuses a
+message carrying a member from a later release, which TS 29.002 obliges a
+receiver to accept.
+
+`gsm_map::decode` is the crate's own decoder:
+
+- a member the crate models that cannot be read is an **error**, as are a list
+  element that cannot be read, an unknown CHOICE alternative, a member that is
+  repeated or out of order, and octets after the value;
+- members after the last one the crate models, in a SEQUENCE with an extension
+  marker, are **skipped** (TS 29.002 17.1.4: a receiver "shall not reject an
+  unsupported extension following "..."");
+- `gsm_map::decode_with_extensions` also returns what was skipped, so a peer on
+  a newer release shows up in a log instead of going unnoticed:
+
+```rust
+use gsm_map::operations::sri_sm::RoutingInfoForSmArg;
+
+// The argument above, followed by a member [30] no release defines yet.
+let wire = [
+    0x30, 0x16, 0x80, 0x07, 0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9, 0x81, 0x01, 0xFF,
+    0x82, 0x05, 0x91, 0x51, 0x55, 0x10, 0x99, 0x9E, 0x01, 0x2A,
+];
+let decoded = gsm_map::decode_with_extensions::<RoutingInfoForSmArg>(&wire).unwrap();
+assert!(decoded.value.sm_rp_pri);
+assert_eq!(decoded.unknown_extensions.len(), 1);
+assert_eq!(decoded.unknown_extensions[0].to_string(), "[30] in RoutingInfoForSmArg (3 octets)");
+```
+
+The operations a short message, location or authentication exchange depends on
+model every member TS 29.002 (Rel-18) defines, including ones the crate does
+not interpret; those are carried opaquely and survive the round trip. An
+extensible ENUMERATED keeps a value it has no name for (`Unrecognised(n)`),
+because the specification says per type what a receiver does with one.
 
 ## What's covered
 
@@ -48,25 +89,36 @@ Every operation below is a BER-codable argument/result type (see
 
 | Group | Operations |
 |---|---|
-| **SMS** | `sendRoutingInfoForSM`, `mo-ForwardSM`, `mt-ForwardSM`, `reportSM-DeliveryStatus`, `alertServiceCentre`, `informServiceCentre`, `readyForSM` |
+| **SMS** | `sendRoutingInfoForSM`, `mo-forwardSM`, `mt-forwardSM`, `reportSM-DeliveryStatus`, `alertServiceCentre`, `informServiceCentre`, `readyForSM` |
 | **Mobility** | `updateLocation`, `cancelLocation`, `purgeMS`, `sendIdentification`, `updateGprsLocation`, `sendRoutingInfoForGprs` |
-| **Authentication** | `sendAuthenticationInfo` (GSM triplets + UMTS quintuplets) |
+| **Authentication** | `sendAuthenticationInfo` (GSM triplets, UMTS quintuplets, EPS vectors) |
 | **Subscriber data** | `insertSubscriberData`, `deleteSubscriberData` |
-| **Subscriber info** | `provideSubscriberInfo`, `anyTimeInterrogation`, `anyTimeModification` |
+| **Subscriber info** | `provideSubscriberInfo`, `anyTimeInterrogation`, `anyTimeModification` (incl. the IP-SM-GW registration) |
 | **Call handling** | `sendRoutingInfo`, `provideRoamingNumber` |
 | **Supplementary services** | `registerSS`, `eraseSS`, `activateSS`, `deactivateSS`, `interrogateSS` |
 | **USSD** | `processUnstructuredSS-Request`, `unstructuredSS-Request`, `unstructuredSS-Notify` |
 | **Fault recovery** | `reset`, `restoreData` |
-| **Handover / IMEI / LCS / OAM** | `prepareHandover`, `checkIMEI`, `provideSubscriberLocation`, `activateTraceMode`, … |
+| **Handover / IMEI / OAM** | `prepareHandover`, `sendEndSignal`, `prepareSubsequentHandover`, `checkIMEI`, `activateTraceMode`, `sendIMSI`, … |
+| **Location services (LCS)** | `provideSubscriberLocation`, `sendRoutingInfoForLCS`, `subscriberLocationReport`, `lcs-MOLR`, the deferred-location set |
+| **Group call (VGCS/VBS)** | `prepareGroupCall`, `sendGroupCallEndSignal`, `processGroupCallSignalling`, `forwardGroupCallSignalling`, `sendGroupCallInfo` |
+| **Notifications** | `noteSubscriberDataModified`, `ss-InvocationNotification`, `noteMM-Event` |
+
+Every MAP operation code TS 29.002 defines resolves through `operation_name()`;
+the handful that exist only in v1 (`performHandover`, `registerPassword`, …) have
+a code and a name but no argument type, because their ASN.1 is gone from the
+current spec.
 
 Plus the connective tissue a stack needs:
 
-- **`op_codes`** and `operation_name()` — the MAP operation-code registry.
-- **`operations::errors`** — MAP error codes and `error_name()`.
-- **`application_context`** — the MAP application-context OIDs (v1/v2/v3) for
-  TCAP dialogue negotiation.
-- **`dialogue`** — builds the TCAP dialogue portion (AARQ/AARE) that carries the
-  application context, so a decoder can pick the right ASN.1 module.
+- **`op_codes`** / `operation_name()` and **`operations::errors`** — the
+  operation-code and error-code registries. Both are generated from one table
+  per registry, so a code cannot exist without a name, and both are checked
+  against the dissector.
+- **`application_context`** — every MAP application-context OID TS 29.002
+  defines, each documented with the versions it actually exists in.
+- **`dialogue`** — the TCAP dialogue portion (AARQ / AARE / ABRT) that carries
+  the application context, in both directions: build one, or read the context
+  and outcome out of one a peer sent.
 - **`MapError`** — the crate error type (wraps `tcap::TcapError`).
 
 ## Where it fits
@@ -74,7 +126,7 @@ Plus the connective tissue a stack needs:
 ```
    TCAP dialogue + components        (the `tcap` crate)
               ▲
-   MAP / CAP operation types         (this crate; pure, I/O-free)
+   MAP operation types               (this crate; pure, I/O-free)
               ▼
    SCCP ▸ M3UA / MTP3 ▸ SCTP         (transport; separate crates)
 ```
@@ -86,7 +138,9 @@ More: [`docs/OVERVIEW.md`](docs/OVERVIEW.md).
 `pip install gsm_map` gives a Rust-backed wheel exposing the SMS operation set.
 Each operation has `.encode() -> bytes` (the BER Invoke parameter) and a
 `.decode(bytes)` classmethod; addresses/identities cross the boundary as `bytes`
-(TBCD in an OCTET STRING). All examples use synthetic `+1 555 01xx` numbers and
+(TBCD in an OCTET STRING). `.decode` is the strict decoder described above: it
+raises `MapError` for a member it cannot read instead of returning the value
+without it, and skips extension additions from a later release. All examples use synthetic `+1 555 01xx` numbers and
 the reserved test PLMN `001/01`.
 
 ```python
@@ -108,6 +162,16 @@ mo = gsm_map.MoForwardSmArg(
     gsm_map.SmRpOa.msisdn(bytes([0x91, 0x51, 0x55, 0x10, 0x00, 0x99, 0xF9])),
     sm_rp_ui=b"...SMS-SUBMIT TPDU...",
 )
+
+# anyTimeModification (op 65): register as the MT-SMS routing node for a
+# subscriber. The HLR then hands `gsm_scf_address` out in RoutingInfoForSmRes
+# instead of the serving MSC, so MT traffic for that subscriber arrives here
+# (TS 23.204). MODIFY_DEACTIVATE undoes it.
+atm = gsm_map.AnyTimeModificationArg(
+    gsm_map.SubscriberIdentity.msisdn(gsm_map.international_e164("15550100999")),
+    gsm_map.international_e164("15550142"),          # this node, in the gsmSCF role
+    modify_registration_status=gsm_map.MODIFY_ACTIVATE,
+)
 ```
 
 The wheel is built for regular CPython 3.9+ (abi3) and, version-specific, for
@@ -118,9 +182,14 @@ loads without re-enabling the GIL.
 
 `cargo bench` runs two suites (criterion):
 
-- **`codec`** — BER encode/decode of the core SMS ops. Indicative
-  (x86-64, release): SRI-SM arg ~99 ns encode / ~72 ns decode; MO-ForwardSM
-  ~147 ns / ~120 ns.
+- **`codec`** — BER encode/decode of the core SMS ops, decoding through
+  `gsm_map::decode`. Indicative (x86-64, release): SRI-SM arg ~135 ns encode /
+  ~215 ns decode; MO-ForwardSM ~195 ns / ~195 ns. Its `decode_cost` group puts
+  the strict decoder next to `rasn::ber::decode` on the same octets: a routing
+  answer with three serving nodes and their Diameter addresses takes ~0.9 µs
+  against ~0.6 µs, and insertSubscriberData with a subscriber profile, the
+  largest argument in common use, ~1.15 µs either way. The difference is the
+  price of not losing a serving node.
 - **`integration`** — the **full SS7 stack**, end to end: it assembles a real
   connectionless message — MAP op arg → TCAP `Invoke` in a `Begin` → SCCP `UDT`
   with GT/SSN addresses → wire bytes — and measures **both** directions at volume
@@ -141,6 +210,38 @@ loads without re-enabling the GIL.
 `scripts/mem_leak_test.sh` runs `examples/leak_check.rs`: a counting global
 allocator asserts live bytes stay flat across codec **and** full-stack churn.
 
+## Checking the encoder against something that isn't us
+
+A BER round-trip cannot catch a tag that is wrong in both directions, and a
+member encoded out of the order the ASN.1 declares is skipped by a peer rather
+than rejected — so a round-trip alone will happily bless an operation no HLR can
+read. Wireshark carries the TS 29.002 ASN.1 compiled into its `gsm_map`
+dissector and does not share our bugs.
+
+`scripts/wireshark_check.sh` runs `examples/wireshark_vectors.rs`, which emits
+one maximal instance of **every** operation as a full MAP → TCAP → SCCP frame,
+pipes them through `text2pcap -l 142` (the SS7 SCCP link type) and asserts that
+the dissector names back every member of every frame. It needs `tshark` and
+`text2pcap`, so it runs in CI rather than under `cargo test`.
+
+Counting members does not show that a member arrived with the right value under
+the right name: an OCTET STRING sent as an INTEGER is still one member. So the
+operations a service centre, an IP short message gateway and a location or
+authentication exchange depend on are also pinned to octets derived by hand
+from the ASN.1, with the derivation next to each vector
+([`tests/common/spec_vectors.rs`](tests/common/spec_vectors.rs)). The tests
+require the encoder to emit exactly those octets and the decoder to read them
+back, and the same octets go through the dissector, which has to print the
+fields each derivation names. Every vector the example emits is also decoded
+again with `gsm_map::decode` and compared.
+
+The dissector is only a valid reference if its compiled ASN.1 is at least as new
+as the spec revision the vectors target, so the script requires **Wireshark
+4.6+** and refuses to run on anything older. 4.2 spells two operations
+differently, does not know the `resetContext-v3` context, and rejects the newer
+members of `sendRoutingInfo`, `lcs-MOLR` and `lcs-LocationNotification` — gaps in
+the reference, indistinguishable in the output from real encoder bugs.
+
 ## Development
 
 ```bash
@@ -152,6 +253,7 @@ cargo clippy --features python --lib -- -D warnings
 cargo bench --no-run                            # incl. the integration bench
 cargo run --release --example leak_check        # prints PASS
 cargo deny check
+./scripts/wireshark_check.sh                    # needs tshark 4.6+ + text2pcap
 
 # Python wheel
 python -m venv .venv && . .venv/bin/activate

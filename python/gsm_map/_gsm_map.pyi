@@ -12,6 +12,19 @@ OP_INFORM_SERVICE_CENTRE: int
 OP_READY_FOR_SM: int
 OP_UPDATE_LOCATION: int
 OP_SEND_AUTHENTICATION_INFO: int
+OP_ANY_TIME_MODIFICATION: int
+
+# ── AlertReason values (readyForSM) ──────────────────────────────────────────
+ALERT_MS_PRESENT: int
+ALERT_MEMORY_AVAILABLE: int
+
+# ── The full registries, as name -> code maps ────────────────────────────────
+OPERATIONS: dict[str, int]
+ERRORS: dict[str, int]
+
+# ── ModificationInstruction values (the IP-SM-GW registration) ───────────────
+MODIFY_DEACTIVATE: int
+MODIFY_ACTIVATE: int
 
 # ── SM-DeliveryOutcome values ────────────────────────────────────────────────
 DELIVERY_OUTCOME_MEMORY_CAPACITY_EXCEEDED: int
@@ -29,6 +42,9 @@ class MapError(Exception):
 
 def op_name(op_code: int) -> str:
     """The MAP operation name for an operation code (e.g. 45 -> 'sendRoutingInfoForSM')."""
+
+def error_name(error_code: int) -> str:
+    """The MAP error name for an error code (e.g. 61 -> 'atm-NotAllowed')."""
 
 def isdn_address_string(
     digits: str, nature: int = ..., plan: int = ...
@@ -79,6 +95,48 @@ class SmRpOa:
     def value(self) -> bytes | None:
         """The carried OCTET STRING, or None for 'no_sm_rp_oa'."""
 
+class AdditionalNumber:
+    """Additional-Number — the second serving node in a LocationInfoWithLmsi
+    (a CHOICE). Build with the staticmethods; inspect via ``.kind``/``.value``.
+    """
+
+    @staticmethod
+    def msc_number(value: bytes) -> AdditionalNumber: ...
+    @staticmethod
+    def sgsn_number(value: bytes) -> AdditionalNumber: ...
+    @property
+    def kind(self) -> str:
+        """One of 'msc_number', 'sgsn_number'."""
+    @property
+    def value(self) -> bytes:
+        """The carried ISDN-AddressString."""
+
+class NetworkNodeDiameterAddress:
+    """A node reached over Diameter (SGd/S6c) rather than MAP: a Diameter Name
+    and Realm, each a DiameterIdentity per RFC 6733.
+    """
+
+    def __init__(self, diameter_name: bytes, diameter_realm: bytes) -> None: ...
+    @property
+    def diameter_name(self) -> bytes: ...
+    @property
+    def diameter_realm(self) -> bytes: ...
+
+class SubscriberIdentity:
+    """SubscriberIdentity — how an any-time operation names the subscriber
+    (a CHOICE). Build with the staticmethods.
+    """
+
+    @staticmethod
+    def imsi(value: bytes) -> SubscriberIdentity: ...
+    @staticmethod
+    def msisdn(value: bytes) -> SubscriberIdentity: ...
+    @property
+    def kind(self) -> str:
+        """One of 'imsi', 'msisdn'."""
+    @property
+    def value(self) -> bytes: ...
+
 class LocationInfoWithLmsi:
     """The serving-node routing info returned by SRI-SM."""
 
@@ -88,7 +146,8 @@ class LocationInfoWithLmsi:
         *,
         lmsi: bytes | None = None,
         gprs_node_indicator: bool = False,
-        additional_number: bytes | None = None,
+        additional_number: AdditionalNumber | None = None,
+        network_node_diameter_address: NetworkNodeDiameterAddress | None = None,
     ) -> None: ...
     @property
     def network_node_number(self) -> bytes: ...
@@ -97,7 +156,9 @@ class LocationInfoWithLmsi:
     @property
     def gprs_node_indicator(self) -> bool: ...
     @property
-    def additional_number(self) -> bytes | None: ...
+    def additional_number(self) -> AdditionalNumber | None: ...
+    @property
+    def network_node_diameter_address(self) -> NetworkNodeDiameterAddress | None: ...
 
 class RoutingInfoForSmArg:
     """sendRoutingInfoForSM-Arg (op 45) — the SMS-GMSC's query to the HLR."""
@@ -241,3 +302,128 @@ class SendAuthenticationInfoArg:
     def encode(self) -> bytes: ...
     @staticmethod
     def decode(data: bytes) -> SendAuthenticationInfoArg: ...
+
+class AnyTimeModificationArg:
+    """anyTimeModification-Arg (op 65) — register or de-register a node as the
+    MT-SMS routing node for a subscriber.
+
+    ``modify_registration_status`` is ``MODIFY_ACTIVATE`` to register and
+    ``MODIFY_DEACTIVATE`` to de-register. The registering node's own address is
+    ``gsm_scf_address``: an IP-SM-GW acts in the gsmSCF role towards the HLR for
+    this dialogue, and that is the address the HLR then hands out in
+    ``RoutingInfoForSmRes``.
+    """
+
+    def __init__(
+        self,
+        subscriber_identity: SubscriberIdentity,
+        gsm_scf_address: bytes,
+        *,
+        modify_registration_status: int | None = None,
+        ip_sm_gw_diameter_address: NetworkNodeDiameterAddress | None = None,
+        long_ftn_supported: bool = False,
+    ) -> None: ...
+    @property
+    def subscriber_identity(self) -> SubscriberIdentity: ...
+    @property
+    def gsm_scf_address(self) -> bytes: ...
+    @property
+    def modify_registration_status(self) -> int | None: ...
+    @property
+    def ip_sm_gw_diameter_address(self) -> NetworkNodeDiameterAddress | None: ...
+    @property
+    def long_ftn_supported(self) -> bool: ...
+    @property
+    def op_code(self) -> int: ...
+    def encode(self) -> bytes: ...
+    @staticmethod
+    def decode(data: bytes) -> AnyTimeModificationArg: ...
+
+class ReadyForSmArg:
+    """readyForSM-Arg (op 66) — the serving node telling the HLR a subscriber
+    became reachable or freed memory. This is the MAP form of Alert-SC.
+
+    ``alert_reason`` is ``ALERT_MS_PRESENT`` or ``ALERT_MEMORY_AVAILABLE``.
+    """
+
+    def __init__(
+        self,
+        imsi: bytes,
+        alert_reason: int,
+        *,
+        alert_reason_indicator: bool = False,
+        additional_alert_reason_indicator: bool = False,
+        maximum_ue_availability_time: bytes | None = None,
+    ) -> None: ...
+    @property
+    def imsi(self) -> bytes: ...
+    @property
+    def alert_reason(self) -> int: ...
+    @property
+    def maximum_ue_availability_time(self) -> bytes | None: ...
+    @property
+    def op_code(self) -> int: ...
+    def encode(self) -> bytes: ...
+    @staticmethod
+    def decode(data: bytes) -> ReadyForSmArg: ...
+
+class AlertServiceCentreArg:
+    """alertServiceCentre-Arg (op 64) — the HLR telling a service centre a
+    subscriber is reachable again, so it can drain its queue.
+    """
+
+    def __init__(
+        self,
+        msisdn: bytes,
+        service_centre_address: bytes,
+        *,
+        imsi: bytes | None = None,
+        new_msc_number: bytes | None = None,
+        new_sgsn_number: bytes | None = None,
+        new_mme_number: bytes | None = None,
+    ) -> None: ...
+    @property
+    def msisdn(self) -> bytes: ...
+    @property
+    def service_centre_address(self) -> bytes: ...
+    @property
+    def imsi(self) -> bytes | None: ...
+    @property
+    def new_msc_number(self) -> bytes | None: ...
+    @property
+    def op_code(self) -> int: ...
+    def encode(self) -> bytes: ...
+    @staticmethod
+    def decode(data: bytes) -> AlertServiceCentreArg: ...
+
+class InformServiceCentreArg:
+    """informServiceCentre-Arg (op 63) — what the HLR already knows about the
+    subscriber's message-waiting state.
+
+    ``mw_status`` is a BIT STRING on the wire; pass the flags as keyword
+    booleans and read them back as a dict.
+    """
+
+    def __init__(
+        self,
+        *,
+        stored_msisdn: bytes | None = None,
+        sc_address_not_included: bool = False,
+        mnrf_set: bool = False,
+        mcef_set: bool = False,
+        mnrg_set: bool = False,
+        mnr5g_set: bool = False,
+        mnr5gn3g_set: bool = False,
+        absent_subscriber_diagnostic_sm: int | None = None,
+    ) -> None: ...
+    @property
+    def stored_msisdn(self) -> bytes | None: ...
+    @property
+    def mw_status(self) -> dict[str, bool] | None: ...
+    @property
+    def absent_subscriber_diagnostic_sm(self) -> int | None: ...
+    @property
+    def op_code(self) -> int: ...
+    def encode(self) -> bytes: ...
+    @staticmethod
+    def decode(data: bytes) -> InformServiceCentreArg: ...
