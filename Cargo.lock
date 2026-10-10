@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "gsm_map"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "criterion",
  "hex",
@@ -763,9 +763,9 @@ checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "tcap"
-version = "1.0.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b0b3ae9ef7e1f435857ee51059c1db6a30f512b450ad232bf63e4ad84b3090a"
+checksum = "2487e2dd5c81e55c4fb7f4d4ce8b8a4024c20e8e4069e9fa99c48e5634952cdc"
 dependencies = [
  "hex",
  "rasn",

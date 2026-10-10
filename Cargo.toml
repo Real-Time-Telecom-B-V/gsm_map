@@ -1,6 +1,6 @@
 [package]
 name = "gsm_map"
-version = "2.0.0"
+version = "3.0.0"
 edition = "2021"
 rust-version = "1.80"
 description = "GSM MAP (Mobile Application Part) operations per 3GPP TS 29.002 — SMS (MO/MT-ForwardSM, SRI-for-SM), mobility, authentication, USSD, supplementary services — as BER-codable ASN.1 types, with optional Rust-backed Python bindings"
@@ -26,7 +26,7 @@ crate-type = ["cdylib", "rlib"]
 rasn = "0.28"
 hex = "0.4"
 thiserror = "2"
-tcap = "1"
+tcap = "2"
 # `address` reuses the canonical TBCD digit packing rather than re-implement the
 # semi-octet swap. sccp is a lean sibling (only `thiserror`), so this stays cheap.
 sccp = "1"

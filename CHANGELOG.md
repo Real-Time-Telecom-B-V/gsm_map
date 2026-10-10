@@ -5,6 +5,50 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See
 [VERSIONING.md](VERSIONING.md) for the policy.
 
+## [3.0.0] - 2026-10-10
+
+The `tcap` dependency moves from 1 to 2. `tcap` types are part of this crate's
+public API (`dialogue` re-exports them and `MapError` wraps `tcap::TcapError`),
+so the move is a major bump here as well. A consumer on `tcap` 2 no longer gets
+two copies of `tcap` in its graph, and a `DialoguePortion` from `gsm_map` is the
+same type as the one `tcap` 2 expects.
+
+No MAP encoding changed. The frames the Wireshark cross-check emits are
+octet-identical to those of 2.0.0, and so are the dialogue portions `begin`,
+`end_accept`, `end_reject` and `abort` build.
+
+### Changed
+
+- **`tcap = "2"`.** If your crate depends on `tcap` directly, move it to 2 in the
+  same step, otherwise the types do not unify. See the `tcap` 2.0.0 changelog
+  for what changed in `Abort`, `Reject`, `InvokeId` (now `i8`) and `decode`.
+- **`dialogue::parse` returns `Result<Option<DialoguePdu>, DialogueError>`** (was
+  `Option<DialoguePdu>`). 2.0.0 answered `None` both for a well-formed portion
+  in a syntax this layer does not model and for a malformed one. They are told
+  apart now: `Ok(None)` is the first, `Err` the second. Q.774 3.2.2.1 has the
+  dialogue aborted for a syntactically incorrect dialogue portion;
+  `DialoguePortion::abnormal_dialogue()` builds the ABRT to send.
+- **`dialogue::application_context` returns
+  `Result<Option<ObjectIdentifier>, DialogueError>`** (was
+  `Option<ObjectIdentifier>`), for the same reason. It also reads the context
+  of an AUDT.
+- **`dialogue::end_reject(ac, diagnostic)`** (was `end_reject(ac, result,
+  diagnostic)`). `AssociateResult::RejectedTransient` is gone: Q.773 defines
+  `accepted (0)` and `reject-permanent (1)` only, the third value belongs to
+  ACSE. With one refusal left the result is no longer a parameter. Drop the
+  argument.
+- `DialoguePdu` has the `Audt` variant, so a `match` on it needs another arm,
+  and `user_information` in every variant is `Option<Vec<External>>` (was the
+  raw content octets).
+- `MapError::TcapError` wraps the `TcapError` of `tcap` 2, which has the
+  `Malformed` and `InvalidMessage` variants in addition.
+
+### Added
+
+- `dialogue` re-exports `DialogueError`, `External`, `ExternalEncoding` and
+  `ProtocolVersion`, the types the changed signatures and `DialoguePdu` members
+  name.
+
 ## [2.0.0]
 
 Every operation the crate models was re-derived from TS 29.002 and checked, member
