@@ -205,23 +205,23 @@ fn dialogue_portion_carries_and_returns_the_application_context() {
     let end = dialogue::end_accept(&oid);
     assert_ne!(begin, end);
     // Both name the context, and both parse back into a typed PDU.
-    assert_eq!(dialogue::application_context(&begin), Some(oid.clone()));
-    assert_eq!(dialogue::application_context(&end), Some(oid));
+    assert_eq!(dialogue::application_context(&begin), Ok(Some(oid.clone())));
+    assert_eq!(dialogue::application_context(&end), Ok(Some(oid)));
     assert!(matches!(
         dialogue::parse(&begin),
-        Some(dialogue::DialoguePdu::Aarq { .. })
+        Ok(Some(dialogue::DialoguePdu::Aarq { .. }))
     ));
     assert!(matches!(
         dialogue::parse(&end),
-        Some(dialogue::DialoguePdu::Aare { .. })
+        Ok(Some(dialogue::DialoguePdu::Aare { .. }))
     ));
 
     // An abort names no context but still parses.
     let abrt = dialogue::abort(dialogue::AbortSource::DialogueServiceProvider);
-    assert_eq!(dialogue::application_context(&abrt), None);
+    assert_eq!(dialogue::application_context(&abrt), Ok(None));
     assert!(matches!(
         dialogue::parse(&abrt),
-        Some(dialogue::DialoguePdu::Abrt { .. })
+        Ok(Some(dialogue::DialoguePdu::Abrt { .. }))
     ));
 }
 
