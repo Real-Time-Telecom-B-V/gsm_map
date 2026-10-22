@@ -81,7 +81,7 @@ impl Encode for Opaque {
         &self,
         encoder: &mut E,
         tag: Tag,
-        _: Constraints,
+        _: &Constraints,
         identifier: Identifier,
     ) -> Result<(), E::Error> {
         if tag == Tag::EOC {
@@ -99,14 +99,14 @@ impl Decode for Opaque {
     fn decode_with_tag_and_constraints<D: Decoder>(
         decoder: &mut D,
         tag: Tag,
-        _: Constraints,
+        _: &Constraints,
     ) -> Result<Self, D::Error> {
         if tag == Tag::EOC {
             return decoder.decode_any(tag).map(Self);
         }
         // Read as a SEQUENCE OF open types: the element has to be
         // constructed and every element inside it well formed.
-        let members: Vec<Any> = decoder.decode_sequence_of(tag, Constraints::default())?;
+        let members: Vec<Any> = decoder.decode_sequence_of(tag, &Constraints::default())?;
         let mut contents = Vec::new();
         for member in &members {
             contents.extend_from_slice(member.as_bytes());
@@ -200,7 +200,7 @@ macro_rules! extensible_enumerated {
                 &self,
                 encoder: &mut E,
                 tag: rasn::types::Tag,
-                constraints: rasn::types::Constraints,
+                constraints: &rasn::types::Constraints,
                 identifier: rasn::types::Identifier,
             ) -> Result<(), E::Error> {
                 encoder
@@ -213,7 +213,7 @@ macro_rules! extensible_enumerated {
             fn decode_with_tag_and_constraints<D: rasn::Decoder>(
                 decoder: &mut D,
                 tag: rasn::types::Tag,
-                constraints: rasn::types::Constraints,
+                constraints: &rasn::types::Constraints,
             ) -> Result<Self, D::Error> {
                 decoder
                     .decode_integer::<i64>(tag, constraints)

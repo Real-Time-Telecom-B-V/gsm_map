@@ -5,6 +5,19 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See
 [VERSIONING.md](VERSIONING.md) for the policy.
 
+## [4.0.0] - 2026-10-22
+
+### Changed
+- **`rasn` 0.29** (was 0.28) and **`tcap` 3**. `rasn` types are in the public
+  API, so a caller moves to rasn 0.29 with this release. Hand-written `Encode`
+  / `Decode` impls and the strict decoder take `&Constraints`, as rasn 0.29's
+  traits do.
+- rasn 0.29 refuses a malformed OPTIONAL member behind an EXPLICIT tag, a
+  malformed last element of a SEQUENCE OF and a SEQUENCE with an unknown
+  member, where 0.28 reported the member absent or the list short. `decode`
+  and `decode_with_extensions` behave as before: the first two are errors,
+  unknown members of an extensible type are skipped and reported.
+
 ## [3.0.0] - 2026-10-10
 
 The `tcap` dependency moves from 1 to 2. `tcap` types are part of this crate's

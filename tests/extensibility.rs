@@ -9,8 +9,8 @@
 //! > ENUMERATED data type.
 //!
 //! `rasn` rejects them: a SEQUENCE with a member it does not know fails with
-//! `UnexpectedExtraData`, and where that SEQUENCE is an element of a list the
-//! failure turns into a list that is silently short. [`gsm_map::decode`]
+//! `UnexpectedExtraData` (rasn 0.28 turned that into an absent OPTIONAL member
+//! or a list that was silently short; 0.29 fails the whole decode). [`gsm_map::decode`]
 //! skips such members where the type is extensible, reports them through
 //! [`gsm_map::decode_with_extensions`], and still refuses everything that is
 //! not an extension: a member of a type without a marker, a member this crate
@@ -21,7 +21,7 @@
 
 mod common;
 
-use common::{lenient, refused, vector};
+use common::{refused, vector};
 use gsm_map::operations::auth::SendAuthenticationInfoRes;
 use gsm_map::operations::mo_forward_sm::MoForwardSmRes;
 use gsm_map::operations::sri_sm::{RoutingInfoForSmArg, RoutingInfoForSmRes};
@@ -151,10 +151,9 @@ fn an_unknown_member_of_a_list_element_does_not_cost_the_element() {
         "a3 4c a0 4a 30 22 {members} 30 24 {members} 85 00"
     ));
 
-    // rasn fails the second triplet, stops, and returns a list of one: the
-    // refusal of an extension turned into silent loss.
-    let lost: SendAuthenticationInfoRes = lenient(&wire);
-    assert_eq!(lost.triplet_list.map(|list| list.len()), Some(1));
+    // rasn fails the second triplet (0.28 then returned a list of one, the
+    // refusal of an extension turned into silent loss; 0.29 fails the decode).
+    assert!(rasn::ber::decode::<SendAuthenticationInfoRes>(&wire).is_err());
 
     let decoded = gsm_map::decode_with_extensions::<SendAuthenticationInfoRes>(&wire).unwrap();
     assert_eq!(decoded.value.triplet_list.map(|list| list.len()), Some(2));
@@ -189,10 +188,9 @@ fn an_unknown_member_behind_an_explicit_tag_does_not_cost_the_member() {
          04 05 04 c0 00 02 01 a5 07 a0 05 82 01 05 84 00",
     );
 
-    // rasn refuses the unknown member inside, and because eps-info is
-    // OPTIONAL behind an EXPLICIT tag that refusal becomes "absent".
-    let lost: UpdateGprsLocationArg = lenient(&wire);
-    assert_eq!(lost.eps_info, None);
+    // rasn refuses the unknown member inside (0.28 then reported eps-info,
+    // OPTIONAL behind an EXPLICIT tag, as absent; 0.29 fails the decode).
+    assert!(rasn::ber::decode::<UpdateGprsLocationArg>(&wire).is_err());
 
     let decoded = gsm_map::decode_with_extensions::<UpdateGprsLocationArg>(&wire).unwrap();
     match decoded.value.eps_info {

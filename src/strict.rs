@@ -456,7 +456,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_bit_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::BitString> {
         self.leaf(tag, |ber| ber.decode_bit_string(tag, constraints))
     }
@@ -472,12 +472,16 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_integer<I: types::IntegerType>(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<I> {
         self.leaf(tag, |ber| ber.decode_integer(tag, constraints))
     }
 
-    fn decode_real<R: types::RealType>(&mut self, tag: Tag, constraints: Constraints) -> Result<R> {
+    fn decode_real<R: types::RealType>(
+        &mut self,
+        tag: Tag,
+        constraints: &Constraints,
+    ) -> Result<R> {
         self.leaf(tag, |ber| ber.decode_real(tag, constraints))
     }
 
@@ -525,7 +529,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_sequence_of<D: Decode>(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<Vec<D>> {
         let mut inner = self.constructed(tag, "SEQUENCE OF")?;
         let mut items = Vec::new();
@@ -533,14 +537,14 @@ impl<'a> rasn::Decoder for Decoder<'a> {
             items.push(D::decode(&mut inner)?);
         }
         self.unknown.append(&mut inner.unknown);
-        Self::check_size(items.len(), &constraints)?;
+        Self::check_size(items.len(), constraints)?;
         Ok(items)
     }
 
     fn decode_set_of<D: Decode + Eq + core::hash::Hash>(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::SetOf<D>> {
         let mut inner = self.constructed(tag, "SET OF")?;
         let mut items = types::SetOf::new();
@@ -548,11 +552,15 @@ impl<'a> rasn::Decoder for Decoder<'a> {
             items.insert(D::decode(&mut inner)?);
         }
         self.unknown.append(&mut inner.unknown);
-        Self::check_size(items.len(), &constraints)?;
+        Self::check_size(items.len(), constraints)?;
         Ok(items)
     }
 
-    fn decode_octet_string<'buf, T>(&'buf mut self, tag: Tag, constraints: Constraints) -> Result<T>
+    fn decode_octet_string<'buf, T>(
+        &'buf mut self,
+        tag: Tag,
+        constraints: &Constraints,
+    ) -> Result<T>
     where
         T: From<&'buf [u8]> + From<Vec<u8>>,
     {
@@ -576,7 +584,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_utf8_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::Utf8String> {
         self.leaf(tag, |ber| ber.decode_utf8_string(tag, constraints))
     }
@@ -584,7 +592,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_visible_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::VisibleString> {
         self.leaf(tag, |ber| ber.decode_visible_string(tag, constraints))
     }
@@ -592,7 +600,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_general_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::GeneralString> {
         self.leaf(tag, |ber| ber.decode_general_string(tag, constraints))
     }
@@ -600,7 +608,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_graphic_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::GraphicString> {
         self.leaf(tag, |ber| ber.decode_graphic_string(tag, constraints))
     }
@@ -608,7 +616,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_ia5_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::Ia5String> {
         self.leaf(tag, |ber| ber.decode_ia5_string(tag, constraints))
     }
@@ -616,7 +624,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_printable_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::PrintableString> {
         self.leaf(tag, |ber| ber.decode_printable_string(tag, constraints))
     }
@@ -624,7 +632,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_numeric_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::NumericString> {
         self.leaf(tag, |ber| ber.decode_numeric_string(tag, constraints))
     }
@@ -632,7 +640,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_teletex_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::TeletexString> {
         self.leaf(tag, |ber| ber.decode_teletex_string(tag, constraints))
     }
@@ -640,7 +648,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_bmp_string(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<types::BmpString> {
         self.leaf(tag, |ber| ber.decode_bmp_string(tag, constraints))
     }
@@ -702,7 +710,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
         field_fn(fields)
     }
 
-    fn decode_choice<D>(&mut self, _: Constraints) -> Result<D>
+    fn decode_choice<D>(&mut self, _: &Constraints) -> Result<D>
     where
         D: types::DecodeChoice,
     {
@@ -724,7 +732,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
 
     fn decode_optional_with_constraints<D: Decode>(
         &mut self,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<Option<D>> {
         self.optional(D::TAG, D::TAG_TREE, |decoder| {
             D::decode_with_constraints(decoder, constraints)
@@ -734,7 +742,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_optional_with_tag_and_constraints<D: Decode>(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<Option<D>> {
         self.optional(tag, D::TAG_TREE, |decoder| {
             D::decode_with_tag_and_constraints(decoder, tag, constraints)
@@ -744,7 +752,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_extension_addition_with_explicit_tag_and_constraints<D: Decode>(
         &mut self,
         tag: Tag,
-        _: Constraints,
+        _: &Constraints,
     ) -> Result<Option<D>> {
         self.decode_optional_with_explicit_prefix(tag)
     }
@@ -752,7 +760,7 @@ impl<'a> rasn::Decoder for Decoder<'a> {
     fn decode_extension_addition_with_tag_and_constraints<D: Decode>(
         &mut self,
         tag: Tag,
-        constraints: Constraints,
+        constraints: &Constraints,
     ) -> Result<Option<D>> {
         self.decode_optional_with_tag_and_constraints(tag, constraints)
     }

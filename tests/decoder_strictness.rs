@@ -1,12 +1,13 @@
 //! What `rasn` loses while decoding, and that [`gsm_map::decode`] refuses it.
 //!
-//! Each test first shows the leniency with `rasn::ber::decode` on the crate's
-//! own type: the decode succeeds and data that was on the wire is gone. It
-//! then shows `gsm_map::decode` returning an error for the same octets. If a
-//! future `rasn` stops being lenient, the first half of a test fails and says
-//! so; the second half is the behaviour this crate guarantees either way.
+//! Each test first shows what `rasn::ber::decode` does on its own with the
+//! crate's type, then shows `gsm_map::decode` returning an error for the same
+//! octets. The first half documents the library and fails if it changes; the
+//! second half is the behaviour this crate guarantees either way.
 //!
-//! The three cases (seen on rasn 0.28.14 and 0.28.15):
+//! The three cases as rasn 0.28 had them. rasn 0.29 refuses 1 and 2 itself
+//! (except an EXPLICIT tag that is not constructed, which it still reads), and
+//! still ignores 3:
 //!
 //! 1. an OPTIONAL member behind an EXPLICIT tag whose content does not decode
 //!    is reported as absent, after its octets have been consumed;
@@ -49,13 +50,11 @@ const SECOND_NODE_UNREADABLE: &str = "30 20 04 08 00 01 01 21 43 65 87 f9
 fn routing_info_additional_number_with_an_unknown_alternative() {
     let wire = vector(SECOND_NODE_UNREADABLE);
 
-    let lost: RoutingInfoForSmRes = lenient(&wire);
-    assert_eq!(
-        lost.location_info_with_lmsi.additional_number, None,
-        "the second serving node is on the wire and rasn dropped it"
+    // rasn 0.28 returned this value without what it could not read.
+    assert!(
+        rasn::ber::decode::<RoutingInfoForSmRes>(&wire).is_err(),
+        "rasn 0.28 decoded this: the second serving node is on the wire and rasn dropped it"
     );
-    // A service centre handed this value sees one serving node, delivers
-    // there, and never tries the other.
 
     let error = refused::<RoutingInfoForSmRes>(&wire);
     assert!(error.contains("AdditionalNumber"), "{error}");
@@ -67,8 +66,11 @@ fn routing_info_third_number_with_an_unknown_alternative() {
     //   a9 09 85 07 91 51 55 10 00 20 f0
     let wire = vector(&SECOND_NODE_UNREADABLE.replace("a6 09", "a9 09"));
 
-    let lost: RoutingInfoForSmRes = lenient(&wire);
-    assert_eq!(lost.location_info_with_lmsi.third_number, None);
+    // rasn 0.28 returned this value without what it could not read.
+    assert!(
+        rasn::ber::decode::<RoutingInfoForSmRes>(&wire).is_err(),
+        "rasn 0.28 dropped what it could not read"
+    );
 
     let error = refused::<RoutingInfoForSmRes>(&wire);
     assert!(error.contains("AdditionalNumber"), "{error}");
@@ -83,9 +85,11 @@ fn routing_info_additional_number_lost_while_a_later_member_survives() {
          a0 16 81 07 91 51 55 10 00 10 f0 a6 09 85 07 91 51 55 10 00 20 f0 8b 00",
     );
 
-    let lost: RoutingInfoForSmRes = lenient(&wire);
-    assert_eq!(lost.location_info_with_lmsi.additional_number, None);
-    assert_eq!(lost.location_info_with_lmsi.ims_node_indicator, Some(()));
+    // rasn 0.28 returned this value without what it could not read.
+    assert!(
+        rasn::ber::decode::<RoutingInfoForSmRes>(&wire).is_err(),
+        "rasn 0.28 dropped what it could not read"
+    );
 
     let error = refused::<RoutingInfoForSmRes>(&wire);
     assert!(error.contains("AdditionalNumber"), "{error}");
@@ -126,10 +130,11 @@ fn update_gprs_location_eps_info_with_a_truncated_member() {
          04 05 04 c0 00 02 01 a5 06 a0 04 80 05 01 02",
     );
 
-    let lost: UpdateGprsLocationArg = lenient(&wire);
-    assert_eq!(lost.eps_info, None, "eps-info is on the wire and is gone");
-    // The HSS processes the location update as if the serving node had sent
-    // no PDN gateway at all.
+    // rasn 0.28 returned this value without what it could not read.
+    assert!(
+        rasn::ber::decode::<UpdateGprsLocationArg>(&wire).is_err(),
+        "rasn 0.28 decoded this: eps-info is on the wire and is gone"
+    );
 
     let error = refused::<UpdateGprsLocationArg>(&wire);
     assert!(error.contains("truncated"), "{error}");
@@ -145,8 +150,11 @@ fn update_gprs_location_eps_info_with_an_unknown_alternative() {
          04 05 04 c0 00 02 01 a5 04 82 02 05 a0",
     );
 
-    let lost: UpdateGprsLocationArg = lenient(&wire);
-    assert_eq!(lost.eps_info, None);
+    // rasn 0.28 returned this value without what it could not read.
+    assert!(
+        rasn::ber::decode::<UpdateGprsLocationArg>(&wire).is_err(),
+        "rasn 0.28 dropped what it could not read"
+    );
 
     let error = refused::<UpdateGprsLocationArg>(&wire);
     assert!(error.contains("EpsInfo"), "{error}");
@@ -188,11 +196,10 @@ fn authentication_triplet_list_loses_a_malformed_last_triplet() {
     //       30 12 ...       a triplet with RAND only  (20 octets)
     let wire = vector(&format!("a3 3a a0 38 {TRIPLET} {HALF_TRIPLET}"));
 
-    let lost: SendAuthenticationInfoRes = lenient(&wire);
-    assert_eq!(
-        lost.triplet_list.map(|list| list.len()),
-        Some(1),
-        "one of two vectors is gone"
+    // rasn 0.28 returned this value without what it could not read.
+    assert!(
+        rasn::ber::decode::<SendAuthenticationInfoRes>(&wire).is_err(),
+        "rasn 0.28 decoded this: one of two vectors is gone"
     );
 
     let error = refused::<SendAuthenticationInfoRes>(&wire);
@@ -204,9 +211,11 @@ fn authentication_triplet_list_with_one_malformed_triplet_comes_back_empty() {
     //   a3 16  a0 14  30 12 04 10 ...
     let wire = vector(&format!("a3 16 a0 14 {HALF_TRIPLET}"));
 
-    let lost: SendAuthenticationInfoRes = lenient(&wire);
-    assert_eq!(lost.triplet_list, Some(vec![]));
-    // The answer reads as "here are your vectors: none".
+    // rasn 0.28 returned this value without what it could not read.
+    assert!(
+        rasn::ber::decode::<SendAuthenticationInfoRes>(&wire).is_err(),
+        "rasn 0.28 dropped what it could not read"
+    );
 
     refused::<SendAuthenticationInfoRes>(&wire);
 }
