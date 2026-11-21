@@ -821,7 +821,7 @@ mod tests {
         });
         round_trip(&SendRoutingInfoRes {
             imsi: Some(IMSI.into()),
-            extended_routing_info: Some(types::Opaque::new(vec![0xA0, 0x00])),
+            extended_routing_info: Some(types::Opaque::new(vec![0x30, 0x00])),
             subscriber_info: Some(subscriber_info()),
             vmsc_address: Some(SC_ADDR.into()),
             extension_container: Some(types::ExtensionContainer::default()),

@@ -379,3 +379,43 @@ pub struct DeleteSubscriberDataRes {
 pub mod op_codes {
     pub use crate::types::op_codes::{DELETE_SUBSCRIBER_DATA, INSERT_SUBSCRIBER_DATA};
 }
+
+impl InsertSubscriberDataArg {
+    /// Encode a typed value into the existing opaque field. On error the field is unchanged.
+    pub fn set_vlr_camel_subscription_info(
+        &mut self,
+        value: &super::camel_subscription::VlrCamelSubscriptionInfo,
+    ) -> Result<(), crate::MapError> {
+        self.vlr_camel_subscription_info = Some(Opaque::from_sequence(value)?);
+        Ok(())
+    }
+
+    /// Decode a present opaque field using the strict MAP decoder.
+    pub fn vlr_camel_subscription_info_typed(
+        &self,
+    ) -> Option<Result<super::camel_subscription::VlrCamelSubscriptionInfo, crate::MapError>> {
+        self.vlr_camel_subscription_info
+            .as_ref()
+            .map(Opaque::decode_sequence)
+    }
+}
+
+impl InsertSubscriberDataArg {
+    /// Encode a typed value into the existing opaque field. On error the field is unchanged.
+    pub fn set_gprs_subscription_data(
+        &mut self,
+        value: &super::gprs_subscription::GprsSubscriptionData,
+    ) -> Result<(), crate::MapError> {
+        self.gprs_subscription_data = Some(Opaque::from_sequence(value)?);
+        Ok(())
+    }
+
+    /// Decode a present opaque field using the strict MAP decoder.
+    pub fn gprs_subscription_data_typed(
+        &self,
+    ) -> Option<Result<super::gprs_subscription::GprsSubscriptionData, crate::MapError>> {
+        self.gprs_subscription_data
+            .as_ref()
+            .map(Opaque::decode_sequence)
+    }
+}

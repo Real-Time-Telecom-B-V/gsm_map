@@ -5,6 +5,26 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See
 [VERSIONING.md](VERSIONING.md) for the policy.
 
+## [4.1.0] - Unreleased
+
+### Added
+
+- Typed views and setters for VLR CAMEL subscription information, GPRS
+  subscription data, SRI extended routing information and CAMEL capabilities.
+  Existing operation fields remain `Option<Opaque>`; helpers use `MapError`
+  and the strict MAP decoder. O-CSI, T-CSI, PDP contexts, AMBR and forwarding
+  data are typed. VLR vt-CSI remains opaque with T-CSI accessors; other VLR
+  subscription blocks and GMSC criteria/D-CSI remain opaque.
+- Hand-derived BER vectors checked in both directions and by Wireshark,
+  including two PDP contexts and both SRI routing alternatives.
+
+### Fixed
+
+- SRI results now encode the untagged ExtendedRoutingInfo CHOICE correctly:
+  roaming numbers carry their OCTET STRING tag, and camelRoutingInfo uses
+  implicit [8]. The opaque field holds the complete alternative TLV. The
+  previous extra explicit [8] wrapper was not a valid MAP encoding.
+
 ## [4.0.0] - 2026-10-22
 
 ### Changed

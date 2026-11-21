@@ -772,3 +772,26 @@ mod tests {
         assert_eq!(decoded.tagged.unwrap().as_bytes(), [0x80, 0x01, 0x2a]);
     }
 }
+
+// A universal SEQUENCE wrapper for content held at an implicit position.
+#[derive(AsnType, Encode)]
+#[rasn(delegate, tag(universal, 16))]
+struct SequenceContents(Opaque);
+
+impl Opaque {
+    /// Internal bridge for the typed SEQUENCE views. The BER encoder always
+    /// emits a definite-length outer header; only its content is stored.
+    pub(crate) fn from_sequence<T: Encode>(value: &T) -> Result<Self, crate::MapError> {
+        let bytes = crate::encode(value)?;
+        let header = if bytes[1] & 0x80 == 0 {
+            2
+        } else {
+            2 + usize::from(bytes[1] & 0x7f)
+        };
+        Ok(Self::new(bytes[header..].to_vec()))
+    }
+
+    pub(crate) fn decode_sequence<T: Decode>(&self) -> Result<T, crate::MapError> {
+        crate::decode(&crate::encode(&SequenceContents(self.clone()))?)
+    }
+}
