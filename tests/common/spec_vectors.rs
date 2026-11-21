@@ -905,6 +905,12 @@ pub const UNEXPECTED_DATA_VALUE: SpecVector = SpecVector {
 
 /// Every vector, for the Wireshark cross-check.
 pub const ALL: &[&SpecVector] = &[
+    &TYPED_ISD_CAMEL,
+    &TYPED_ISD_GPRS,
+    &TYPED_SRI_ROAMING,
+    &TYPED_SRI_FORWARDING,
+    &TYPED_SRI_CAMEL,
+    &TYPED_SRI_ARG,
     &SRI_SM_ARG,
     &SRI_SM_RES_ADDITIONAL_MSC,
     &SRI_SM_RES_ADDITIONAL_SGSN,
@@ -939,3 +945,182 @@ pub const ALL: &[&SpecVector] = &[
     &SUBSCRIBER_BUSY_FOR_MT_SMS,
     &UNEXPECTED_DATA_VALUE,
 ];
+
+/// MAP-MS-DataTypes: VLR has vt-CSI [7] of type T-CSI, not a t-CSI member.
+/// All context tags below are implicit. Lengths sum the enclosed TLVs.
+/// ```text
+/// 30 43                         InsertSubscriberDataArg, 67 content octets
+///   81 05 91 51 55 10 00        msisdn +15550100
+///   82 01 0a                    category
+///   a6 09                       teleserviceList
+///     04 01 11                  TS11 telephony
+///     04 01 21                  TS21 shortMessageMT-PP
+///     04 01 22                  TS22 shortMessageMO-PP
+///   ad 2c                       vlrCamelSubscriptionInfo
+///     a0 14                     o-CSI
+///       30 12                   O-BcsmCamelTDPDataList
+///         30 10                 O-BcsmCamelTDPData
+///           0a 01 02            collectedInfo ENUMERATED (2)
+///           02 01 64            serviceKey INTEGER 100
+///           80 05 91 51 55 10 00 gsmSCF-Address [0] +15550100
+///           81 01 00            defaultCallHandling [1] continueCall
+///     a7 14                     vt-CSI (T-CSI)
+///       30 12                   T-BcsmCamelTDPDataList
+///         30 10                 T-BcsmCamelTDPData
+///           0a 01 0c            termAttemptAuthorized ENUMERATED (12)
+///           02 01 64            serviceKey 100
+///           80 05 91 51 55 10 00 gsmSCF-Address [0]
+///           81 01 00            defaultCallHandling [1] continueCall
+/// ```
+pub const TYPED_ISD_CAMEL: SpecVector = SpecVector {
+    label: "spec_typed_isd_camel",
+    code: 7,
+    kind: Kind::Argument,
+    members: 4,
+    octets: "30 43 81 05 91 51 55 10 00 82 01 0a a6 09 04 01 11 04 01 21 04 01 22
+      ad 2c a0 14 30 12 30 10 0a 01 02 02 01 64 80 05 91 51 55 10 00 81 01 00
+            a7 14 30 12 30 10 0a 01 0c 02 01 64 80 05 91 51 55 10 00 81 01 00",
+    fields: &[
+        "msisdn: 9151551000",
+        "category: 0a",
+        "teleserviceList: 3 items",
+        "Ext-TeleserviceCode: telephony (17)",
+        "Ext-TeleserviceCode: shortMessageMT-PP (33)",
+        "Ext-TeleserviceCode: shortMessageMO-PP (34)",
+        "o-CSI",
+        "vt-CSI",
+        "collectedInfo (2)",
+        "termAttemptAuthorized (12)",
+        "serviceKey: 100",
+        "gsmSCF-Address: 9151551000",
+        "continueCall (0)",
+    ],
+};
+
+/// PDP contexts use high root tags, then low extension tags in declaration order.
+/// ```text
+/// 30 4d                         InsertSubscriberDataArg
+///   b0 4b                       gprsSubscriptionData [16]
+///     05 00                     completeDataListIncluded
+///     a1 47                     gprsDataList [1], 36 + 35 octets
+///       30 22                   PDP-Context (34 content octets)
+///         02 01 01              pdp-ContextId 1
+///         90 02 f1 21           pdp-Type [16] IPv4
+///         92 03 00 00 00        qos-Subscribed [18]
+///         94 09 08 69 6e 74 65 72 6e 65 74  apn [20], label "internet"
+///         80 09 01 00 00 00 00 00 00 00 00              ext-QoS-Subscribed [0], priority 1
+///       30 21                   PDP-Context
+///         02 01 02              pdp-ContextId 2
+///         90 02 f1 21           pdp-Type [16] IPv4
+///         92 03 00 00 00        qos-Subscribed [18]
+///         94 04 03 69 6d 73     apn [20], label "ims"
+///         80 09 01 00 00 00 00 00 00 00 00              ext-QoS-Subscribed [0]
+///         86 02 f1 8d           ext-pdp-Type [6] IPv4v6
+/// ```
+pub const TYPED_ISD_GPRS: SpecVector = SpecVector {
+    label: "spec_typed_isd_gprs", code: 7, kind: Kind::Argument, members: 1,
+    octets: "30 4d b0 4b 05 00 a1 47
+      30 22 02 01 01 90 02 f1 21 92 03 00 00 00 94 09 08 69 6e 74 65 72 6e 65 74 80 09 01 00 00 00 00 00 00 00 00
+      30 21 02 01 02 90 02 f1 21 92 03 00 00 00 94 04 03 69 6d 73 80 09 01 00 00 00 00 00 00 00 00 86 02 f1 8d",
+    fields: &["completeDataListIncluded", "pdp-ContextId: 1", "pdp-ContextId: 2",
+      "pdp-Type: f121", "qos-Subscribed: 000000", "APN: internet", "APN: ims",
+      "ext-QoS-Subscribed: 010000000000000000", "ext-pdp-Type: f18d"],
+};
+
+/// ExtendedRoutingInfo and RoutingInfo are untagged CHOICEs: no extra wrapper.
+/// ```text
+/// a3 11                         SendRoutingInfoRes [3]
+///   89 08 00 01 01 00 00 00 00 f1  imsi [9], 001010000000001
+///   04 05 91 51 55 10 00        routingInfo.roamingNumber +15550100
+/// ```
+pub const TYPED_SRI_ROAMING: SpecVector = SpecVector {
+    label: "spec_typed_sri_roaming",
+    code: 22,
+    kind: Kind::Result,
+    members: 2,
+    octets: "a3 11 89 08 00 01 01 00 00 00 00 f1 04 05 91 51 55 10 00",
+    fields: &["IMSI: 001010000000001", "roamingNumber: 9151551000"],
+};
+
+/// camelRoutingInfo [8] is an implicitly tagged SEQUENCE alternative.
+/// ```text
+/// a3 24                         SendRoutingInfoRes [3]
+///   89 08 00 01 01 00 00 00 00 f1  imsi [9]
+///   a8 18                       camelRoutingInfo [8]
+///     a0 16                     gmscCamelSubscriptionInfo [0]
+///       a0 14                   t-CSI [0]
+///         30 12                 T-BcsmCamelTDPDataList
+///           30 10               T-BcsmCamelTDPData
+///             0a 01 0c          termAttemptAuthorized
+///             02 01 64          serviceKey 100
+///             80 05 91 51 55 10 00 gsmSCF-Address [0]
+///             81 01 00          defaultCallHandling [1] continueCall
+/// ```
+pub const TYPED_SRI_CAMEL: SpecVector = SpecVector {
+    label: "spec_typed_sri_camel",
+    code: 22,
+    kind: Kind::Result,
+    members: 2,
+    octets: "a3 24 89 08 00 01 01 00 00 00 00 f1 a8 18 a0 16 a0 14
+      30 12 30 10 0a 01 0c 02 01 64 80 05 91 51 55 10 00 81 01 00",
+    fields: &[
+        "IMSI: 001010000000001",
+        "camelRoutingInfo",
+        "gmscCamelSubscriptionInfo",
+        "t-CSI",
+        "termAttemptAuthorized (12)",
+        "serviceKey: 100",
+        "gsmSCF-Address: 9151551000",
+        "continueCall (0)",
+    ],
+};
+
+/// ```text
+/// 30 19                         SendRoutingInfoArg
+///   80 05 91 51 55 10 00        msisdn [0]
+///   83 01 00                    interrogationType [3] basicCall
+///   86 05 91 51 55 10 00        gmsc-OrGsmSCF-Address [6]
+///   ab 06                       camelInfo [11] IMPLICIT SEQUENCE
+///     03 02 04 f0               supportedCamelPhases BIT STRING, 4 unused bits
+///     05 00                     suppress-T-CSI NULL
+/// ```
+pub const TYPED_SRI_ARG: SpecVector = SpecVector {
+    label: "spec_typed_sri_arg",
+    code: 22,
+    kind: Kind::Argument,
+    members: 4,
+    octets: "30 19 80 05 91 51 55 10 00 83 01 00 86 05 91 51 55 10 00 ab 06 03 02 04 f0 05 00",
+    fields: &[
+        "msisdn: 9151551000",
+        "interrogationType: basicCall (0)",
+        "gmsc-OrGsmSCF-Address: 9151551000",
+        "supportedCamelPhases",
+        "suppress-T-CSI",
+    ],
+};
+
+/// ForwardingData uses declaration order [5], [4], [6], [7], ..., [8].
+/// The routingInfo alternative adds no wrapper around its SEQUENCE.
+/// ```text
+/// a3 1c                         SendRoutingInfoRes
+///   89 08 00 01 01 00 00 00 00 f1  imsi [9]
+///   30 10                       forwardingData
+///     85 05 91 51 55 10 00      forwardedToNumber [5], +15550100
+///     a7 00                     extensionContainer [7], empty SEQUENCE
+///     88 05 91 51 55 10 10      longForwardedToNumber [8], +15550101
+/// ```
+pub const TYPED_SRI_FORWARDING: SpecVector = SpecVector {
+    label: "spec_typed_sri_forwarding",
+    code: 22,
+    kind: Kind::Result,
+    members: 2,
+    octets: "a3 1c 89 08 00 01 01 00 00 00 00 f1 30 10
+        85 05 91 51 55 10 00 a7 00 88 05 91 51 55 10 10",
+    fields: &[
+        "IMSI: 001010000000001",
+        "forwardingData",
+        "forwardedToNumber: 9151551000",
+        "extensionContainer",
+        "longForwardedToNumber: 9151551010",
+    ],
+};

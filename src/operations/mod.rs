@@ -55,3 +55,6 @@ pub mod group_call;
 
 // MAP error codes
 pub mod errors;
+
+pub mod camel_subscription;
+pub mod gprs_subscription;

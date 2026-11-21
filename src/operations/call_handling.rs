@@ -165,7 +165,7 @@ impl SendRoutingInfoArg {
 /// ```asn1
 /// SendRoutingInfoRes ::= [3] SEQUENCE {
 ///     imsi                            [9] IMSI OPTIONAL,
-///     extendedRoutingInfo             [8] ExtendedRoutingInfo OPTIONAL,
+///     extendedRoutingInfo                 ExtendedRoutingInfo OPTIONAL,
 ///     cug-CheckInfo                   [3] CUG-CheckInfo OPTIONAL,
 ///     cugSubscriptionFlag             [6] NULL OPTIONAL,
 ///     subscriberInfo                  [7] SubscriberInfo OPTIONAL,
@@ -192,15 +192,15 @@ impl SendRoutingInfoArg {
 /// ```
 ///
 /// The result as a whole carries context tag `[3]`, which is what distinguishes
-/// it from the bare `RoutingInfo` CHOICE a v1/v2 peer sends. `extendedRoutingInfo`,
-/// `basicService`, `basicService2` and `routingInfo2` are CHOICEs, so their tags
-/// are **explicit**.
-#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
+/// it from the bare `RoutingInfo` CHOICE a v1/v2 peer sends.
+/// `extendedRoutingInfo` is untagged; `basicService`, `basicService2` and
+/// `routingInfo2` have explicit context tags because they are CHOICEs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType)]
 #[rasn(tag(context, 3))]
 pub struct SendRoutingInfoRes {
     #[rasn(tag(context, 9))]
     pub imsi: Option<Imsi>,
-    #[rasn(tag(explicit(context, 8)))]
+    /// Complete ExtendedRoutingInfo TLV, without an extra explicit wrapper.
     pub extended_routing_info: Option<Opaque>,
     #[rasn(tag(context, 3))]
     pub cug_check_info: Option<Opaque>,
@@ -707,4 +707,339 @@ pub struct IstCommandArg {
 #[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
 pub struct IstCommandRes {
     pub extension_container: Option<ExtensionContainer>,
+}
+
+// Typed views of the opaque call-handling members.
+use super::camel_subscription::{OCsi, TCsi};
+
+/// ForwardingData (TS 29.002). Tags and declaration order follow the ASN.1.
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
+pub struct ForwardingData {
+    #[rasn(tag(context, 5))]
+    pub forwarded_to_number: Option<IsdnAddressString>,
+    #[rasn(tag(context, 4))]
+    pub forwarded_to_subaddress: Option<OctetString>,
+    #[rasn(tag(context, 6))]
+    pub forwarding_options: Option<OctetString>,
+    #[rasn(tag(context, 7))]
+    pub extension_container: Option<ExtensionContainer>,
+    // ... (ASN.1 extension marker)
+    #[rasn(tag(context, 8))]
+    pub long_forwarded_to_number: Option<OctetString>,
+}
+
+/// RoutingInfo, an untagged CHOICE.
+#[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
+#[rasn(choice)]
+pub enum RoutingInfo {
+    RoamingNumber(IsdnAddressString),
+    ForwardingData(ForwardingData),
+}
+
+/// ExtendedRoutingInfo, with an implicitly tagged SEQUENCE alternative [8].
+#[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
+#[rasn(choice)]
+// Keep the ASN.1 alternatives directly constructible, as with EpsInfo.
+#[allow(clippy::large_enum_variant)]
+pub enum ExtendedRoutingInfo {
+    RoutingInfo(RoutingInfo),
+    #[rasn(tag(context, 8))]
+    CamelRoutingInfo(CamelRoutingInfo),
+}
+
+/// CamelRoutingInfo (TS 29.002). Tags and declaration order follow the ASN.1.
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
+pub struct CamelRoutingInfo {
+    pub forwarding_data: Option<ForwardingData>,
+    #[rasn(tag(context, 0))]
+    pub gmsc_camel_subscription_info: GmscCamelSubscriptionInfo,
+    #[rasn(tag(context, 1))]
+    pub extension_container: Option<ExtensionContainer>,
+    // ... (ASN.1 extension marker)
+}
+
+/// GmscCamelSubscriptionInfo (TS 29.002). Tags and declaration order follow the ASN.1.
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
+pub struct GmscCamelSubscriptionInfo {
+    #[rasn(tag(context, 0))]
+    pub t_csi: Option<TCsi>,
+    #[rasn(tag(context, 1))]
+    pub o_csi: Option<OCsi>,
+    #[rasn(tag(context, 2))]
+    pub extension_container: Option<ExtensionContainer>,
+    // ... (ASN.1 extension marker)
+    #[rasn(tag(context, 3))]
+    pub o_bcsm_camel_tdp_criteria_list: Option<Opaque>,
+    #[rasn(tag(context, 4))]
+    pub t_bcsm_camel_tdp_criteria_list: Option<Opaque>,
+    #[rasn(tag(context, 5))]
+    pub d_csi: Option<Opaque>,
+}
+
+/// CamelInfo (TS 29.002). Tags and declaration order follow the ASN.1.
+#[derive(Debug, Clone, PartialEq, Eq, AsnType, Decode, Encode)]
+pub struct CamelInfo {
+    pub supported_camel_phases: BitString,
+    pub suppress_t_csi: Option<()>,
+    pub extension_container: Option<ExtensionContainer>,
+    // ... (ASN.1 extension marker)
+    #[rasn(tag(context, 0))]
+    pub offered_camel4_csis: Option<BitString>,
+}
+
+impl CamelInfo {
+    /// Mandatory members; optional members start absent.
+    pub fn new(supported_camel_phases: BitString) -> Self {
+        Self {
+            supported_camel_phases,
+            suppress_t_csi: None,
+            extension_container: None,
+            offered_camel4_csis: None,
+        }
+    }
+}
+
+impl SendRoutingInfoArg {
+    /// Encode a typed value into the existing opaque field. On error the field is unchanged.
+    pub fn set_camel_info(&mut self, value: &CamelInfo) -> Result<(), crate::MapError> {
+        self.camel_info = Some(Opaque::from_sequence(value)?);
+        Ok(())
+    }
+
+    /// Decode a present opaque field using the strict MAP decoder.
+    pub fn camel_info_typed(&self) -> Option<Result<CamelInfo, crate::MapError>> {
+        self.camel_info.as_ref().map(Opaque::decode_sequence)
+    }
+}
+
+impl SendRoutingInfoRes {
+    /// Encode a typed value into the existing opaque field. On error the field is unchanged.
+    pub fn set_extended_routing_info(
+        &mut self,
+        value: &ExtendedRoutingInfo,
+    ) -> Result<(), crate::MapError> {
+        self.extended_routing_info = Some(Opaque::new(crate::encode(value)?));
+        Ok(())
+    }
+
+    /// Decode a present opaque field using the strict MAP decoder.
+    pub fn extended_routing_info_typed(
+        &self,
+    ) -> Option<Result<ExtendedRoutingInfo, crate::MapError>> {
+        self.extended_routing_info
+            .as_ref()
+            .map(|value| crate::decode(value.as_bytes()))
+    }
+}
+
+// Split the untagged optional CHOICE into its wire alternatives. Each opaque
+// value keeps the complete TLV; a concrete tag prevents greedy optional decoding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RoutingInfoEncoding<const IDENTIFIER: u8>(Opaque);
+
+impl<const IDENTIFIER: u8> AsnType for RoutingInfoEncoding<IDENTIFIER> {
+    const TAG: Tag = Tag::new(
+        if IDENTIFIER & 0x80 == 0 {
+            Class::Universal
+        } else {
+            Class::Context
+        },
+        (IDENTIFIER & 0x1f) as u32,
+    );
+}
+
+impl<const IDENTIFIER: u8> Encode for RoutingInfoEncoding<IDENTIFIER> {
+    fn encode_with_tag_and_constraints<'b, E: Encoder<'b>>(
+        &self,
+        encoder: &mut E,
+        _tag: Tag,
+        constraints: &Constraints,
+        identifier: Identifier,
+    ) -> Result<(), E::Error> {
+        self.0
+            .encode_with_tag_and_constraints(encoder, Tag::EOC, constraints, identifier)
+    }
+}
+
+impl<const IDENTIFIER: u8> Decode for RoutingInfoEncoding<IDENTIFIER> {
+    fn decode_with_tag_and_constraints<D: Decoder>(
+        decoder: &mut D,
+        _tag: Tag,
+        constraints: &Constraints,
+    ) -> Result<Self, D::Error> {
+        Opaque::decode_with_tag_and_constraints(decoder, Tag::EOC, constraints).map(Self)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, AsnType, Decode, Encode)]
+#[rasn(tag(context, 3))]
+struct SendRoutingInfoResWire {
+    #[rasn(tag(context, 9))]
+    pub imsi: Option<Imsi>,
+    pub roaming_number: Option<RoutingInfoEncoding<0x04>>,
+    pub forwarding_data: Option<RoutingInfoEncoding<0x30>>,
+    pub camel_routing_info: Option<RoutingInfoEncoding<0xa8>>,
+    #[rasn(tag(context, 3))]
+    pub cug_check_info: Option<Opaque>,
+    #[rasn(tag(context, 6))]
+    pub cug_subscription_flag: Option<()>,
+    #[rasn(tag(context, 7))]
+    pub subscriber_info: Option<crate::operations::subscriber_info::SubscriberInfo>,
+    #[rasn(tag(context, 1))]
+    pub ss_list: Option<Vec<OctetString>>,
+    #[rasn(tag(explicit(context, 5)))]
+    pub basic_service: Option<Opaque>,
+    #[rasn(tag(context, 4))]
+    pub forwarding_interrogation_required: Option<()>,
+    #[rasn(tag(context, 2))]
+    pub vmsc_address: Option<IsdnAddressString>,
+    #[rasn(tag(context, 0))]
+    pub extension_container: Option<ExtensionContainer>,
+    #[rasn(tag(context, 10))]
+    pub naea_preferred_ci: Option<Opaque>,
+    #[rasn(tag(context, 11))]
+    pub ccbs_indicators: Option<Opaque>,
+    #[rasn(tag(context, 12))]
+    pub msisdn: Option<IsdnAddressString>,
+    #[rasn(tag(context, 13))]
+    pub number_portability_status: Option<Integer>,
+    #[rasn(tag(context, 14))]
+    pub ist_alert_timer: Option<Integer>,
+    #[rasn(tag(context, 15))]
+    pub supported_camel_phases_in_vmsc: Option<BitString>,
+    #[rasn(tag(context, 16))]
+    pub offered_camel4_csis_in_vmsc: Option<BitString>,
+    #[rasn(tag(explicit(context, 17)))]
+    pub routing_info2: Option<Opaque>,
+    #[rasn(tag(context, 18))]
+    pub ss_list2: Option<Vec<OctetString>>,
+    #[rasn(tag(explicit(context, 19)))]
+    pub basic_service2: Option<Opaque>,
+    #[rasn(tag(context, 20))]
+    pub allowed_services: Option<BitString>,
+    #[rasn(tag(context, 21))]
+    pub unavailability_cause: Option<Integer>,
+    #[rasn(tag(context, 22))]
+    pub release_resources_supported: Option<()>,
+    #[rasn(tag(context, 23))]
+    pub gsm_bearer_capability: Option<Opaque>,
+}
+
+impl From<SendRoutingInfoRes> for SendRoutingInfoResWire {
+    fn from(value: SendRoutingInfoRes) -> Self {
+        Self {
+            imsi: value.imsi,
+            roaming_number: value
+                .extended_routing_info
+                .as_ref()
+                .filter(|v| v.as_bytes().first() == Some(&0x04))
+                .cloned()
+                .map(RoutingInfoEncoding),
+            forwarding_data: value
+                .extended_routing_info
+                .as_ref()
+                .filter(|v| v.as_bytes().first() == Some(&0x30))
+                .cloned()
+                .map(RoutingInfoEncoding),
+            camel_routing_info: value
+                .extended_routing_info
+                .filter(|v| !matches!(v.as_bytes().first(), Some(0x04 | 0x30)))
+                .map(RoutingInfoEncoding),
+            cug_check_info: value.cug_check_info,
+            cug_subscription_flag: value.cug_subscription_flag,
+            subscriber_info: value.subscriber_info,
+            ss_list: value.ss_list,
+            basic_service: value.basic_service,
+            forwarding_interrogation_required: value.forwarding_interrogation_required,
+            vmsc_address: value.vmsc_address,
+            extension_container: value.extension_container,
+            naea_preferred_ci: value.naea_preferred_ci,
+            ccbs_indicators: value.ccbs_indicators,
+            msisdn: value.msisdn,
+            number_portability_status: value.number_portability_status,
+            ist_alert_timer: value.ist_alert_timer,
+            supported_camel_phases_in_vmsc: value.supported_camel_phases_in_vmsc,
+            offered_camel4_csis_in_vmsc: value.offered_camel4_csis_in_vmsc,
+            routing_info2: value.routing_info2,
+            ss_list2: value.ss_list2,
+            basic_service2: value.basic_service2,
+            allowed_services: value.allowed_services,
+            unavailability_cause: value.unavailability_cause,
+            release_resources_supported: value.release_resources_supported,
+            gsm_bearer_capability: value.gsm_bearer_capability,
+        }
+    }
+}
+
+impl From<SendRoutingInfoResWire> for SendRoutingInfoRes {
+    fn from(value: SendRoutingInfoResWire) -> Self {
+        Self {
+            imsi: value.imsi,
+            extended_routing_info: value
+                .roaming_number
+                .map(|v| v.0)
+                .or_else(|| value.forwarding_data.map(|v| v.0))
+                .or_else(|| value.camel_routing_info.map(|v| v.0)),
+            cug_check_info: value.cug_check_info,
+            cug_subscription_flag: value.cug_subscription_flag,
+            subscriber_info: value.subscriber_info,
+            ss_list: value.ss_list,
+            basic_service: value.basic_service,
+            forwarding_interrogation_required: value.forwarding_interrogation_required,
+            vmsc_address: value.vmsc_address,
+            extension_container: value.extension_container,
+            naea_preferred_ci: value.naea_preferred_ci,
+            ccbs_indicators: value.ccbs_indicators,
+            msisdn: value.msisdn,
+            number_portability_status: value.number_portability_status,
+            ist_alert_timer: value.ist_alert_timer,
+            supported_camel_phases_in_vmsc: value.supported_camel_phases_in_vmsc,
+            offered_camel4_csis_in_vmsc: value.offered_camel4_csis_in_vmsc,
+            routing_info2: value.routing_info2,
+            ss_list2: value.ss_list2,
+            basic_service2: value.basic_service2,
+            allowed_services: value.allowed_services,
+            unavailability_cause: value.unavailability_cause,
+            release_resources_supported: value.release_resources_supported,
+            gsm_bearer_capability: value.gsm_bearer_capability,
+        }
+    }
+}
+
+impl Encode for SendRoutingInfoRes {
+    fn encode_with_tag_and_constraints<'b, E: Encoder<'b>>(
+        &self,
+        encoder: &mut E,
+        tag: Tag,
+        constraints: &Constraints,
+        identifier: Identifier,
+    ) -> Result<(), E::Error> {
+        SendRoutingInfoResWire::from(self.clone()).encode_with_tag_and_constraints(
+            encoder,
+            tag,
+            constraints,
+            identifier,
+        )
+    }
+}
+
+impl Decode for SendRoutingInfoRes {
+    fn decode_with_tag_and_constraints<D: Decoder>(
+        decoder: &mut D,
+        tag: Tag,
+        constraints: &Constraints,
+    ) -> Result<Self, D::Error> {
+        let wire =
+            SendRoutingInfoResWire::decode_with_tag_and_constraints(decoder, tag, constraints)?;
+        let alternatives = usize::from(wire.roaming_number.is_some())
+            + usize::from(wire.forwarding_data.is_some())
+            + usize::from(wire.camel_routing_info.is_some());
+        if alternatives > 1 {
+            return Err(rasn::de::Error::custom(
+                "multiple ExtendedRoutingInfo alternatives",
+                decoder.codec(),
+            ));
+        }
+        Ok(wire.into())
+    }
 }
