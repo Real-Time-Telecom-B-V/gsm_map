@@ -23,7 +23,7 @@ exclude = [".github/", "docs/", "scripts/", "python/tests/"]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-rasn = "0.29"
+rasn = "0.30"
 hex = "0.4"
 thiserror = "2"
 tcap = "3"
