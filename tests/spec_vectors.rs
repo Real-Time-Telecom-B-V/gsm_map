@@ -644,3 +644,321 @@ fn every_vector_is_well_formed_and_has_a_distinct_label() {
         assert!(!vector.fields.is_empty(), "{}", vector.label);
     }
 }
+
+use gsm_map::operations::call_handling::{
+    CamelInfo, CamelRoutingInfo, ExtendedRoutingInfo, GmscCamelSubscriptionInfo, InterrogationType,
+    RoutingInfo, SendRoutingInfoArg, SendRoutingInfoRes,
+};
+use gsm_map::operations::camel_subscription::*;
+use gsm_map::operations::gprs_subscription::*;
+
+fn t_csi() -> TCsi {
+    TCsi::new(vec![TBcsmCamelTdpData::new(
+        TBcsmTriggerDetectionPoint::TermAttemptAuthorized,
+        100.into(),
+        number("15550100"),
+        DefaultCallHandling::ContinueCall,
+    )])
+}
+
+#[test]
+fn typed_isd_camel() {
+    let mut vlr = VlrCamelSubscriptionInfo {
+        o_csi: Some(OCsi::new(vec![OBcsmCamelTdpData::new(
+            OBcsmTriggerDetectionPoint::CollectedInfo,
+            100.into(),
+            number("15550100"),
+            DefaultCallHandling::ContinueCall,
+        )])),
+        ..Default::default()
+    };
+    vlr.set_vt_csi(&t_csi()).unwrap();
+    let mut arg = InsertSubscriberDataArg {
+        msisdn: Some(number("15550100")),
+        category: Some(oct(&[10])),
+        teleservice_list: Some(vec![oct(&[0x11]), oct(&[0x21]), oct(&[0x22])]),
+        ..Default::default()
+    };
+    arg.set_vlr_camel_subscription_info(&vlr).unwrap();
+    pinned(&arg, spec::TYPED_ISD_CAMEL.octets);
+    let decoded: InsertSubscriberDataArg =
+        gsm_map::decode(&common::vector(spec::TYPED_ISD_CAMEL.octets)).unwrap();
+    assert_eq!(
+        decoded
+            .vlr_camel_subscription_info_typed()
+            .unwrap()
+            .unwrap(),
+        vlr
+    );
+    assert_eq!(vlr.vt_csi_typed().unwrap().unwrap(), t_csi());
+}
+
+#[test]
+fn typed_isd_gprs() {
+    let mut internet = PdpContext::new(
+        1.into(),
+        oct(&[0xf1, 0x21]),
+        oct(&[0, 0, 0]),
+        oct(b"\x08internet"),
+    );
+    internet.ext_qos_subscribed = Some(oct(&[1, 0, 0, 0, 0, 0, 0, 0, 0]));
+    let mut ims = PdpContext::new(
+        2.into(),
+        oct(&[0xf1, 0x21]),
+        oct(&[0, 0, 0]),
+        oct(b"\x03ims"),
+    );
+    ims.ext_qos_subscribed = Some(oct(&[1, 0, 0, 0, 0, 0, 0, 0, 0]));
+    ims.ext_pdp_type = Some(oct(&[0xf1, 0x8d]));
+    let data = GprsSubscriptionData {
+        complete_data_list_included: Some(()),
+        ..GprsSubscriptionData::new(vec![internet, ims])
+    };
+    let mut arg = InsertSubscriberDataArg::default();
+    arg.set_gprs_subscription_data(&data).unwrap();
+    pinned(&arg, spec::TYPED_ISD_GPRS.octets);
+    let decoded: InsertSubscriberDataArg =
+        gsm_map::decode(&common::vector(spec::TYPED_ISD_GPRS.octets)).unwrap();
+    assert_eq!(
+        decoded.gprs_subscription_data_typed().unwrap().unwrap(),
+        data
+    );
+}
+
+fn sri_result(info: ExtendedRoutingInfo, vector: &spec::SpecVector) {
+    let mut res = SendRoutingInfoRes {
+        imsi: Some(oct(&[0, 1, 1, 0, 0, 0, 0, 0xf1])),
+        ..Default::default()
+    };
+    res.set_extended_routing_info(&info).unwrap();
+    pinned(&res, vector.octets);
+    let decoded: SendRoutingInfoRes = gsm_map::decode(&common::vector(vector.octets)).unwrap();
+    assert_eq!(
+        decoded.extended_routing_info_typed().unwrap().unwrap(),
+        info
+    );
+}
+
+#[test]
+fn typed_sri_roaming() {
+    sri_result(
+        ExtendedRoutingInfo::RoutingInfo(RoutingInfo::RoamingNumber(number("15550100"))),
+        &spec::TYPED_SRI_ROAMING,
+    );
+}
+
+#[test]
+fn typed_sri_camel() {
+    sri_result(
+        ExtendedRoutingInfo::CamelRoutingInfo(CamelRoutingInfo {
+            gmsc_camel_subscription_info: GmscCamelSubscriptionInfo {
+                t_csi: Some(t_csi()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
+        &spec::TYPED_SRI_CAMEL,
+    );
+}
+
+#[test]
+fn typed_sri_arg() {
+    let info = CamelInfo {
+        suppress_t_csi: Some(()),
+        ..CamelInfo::new(bits(&[true; 4]))
+    };
+    let mut arg = SendRoutingInfoArg::new(number("15550100"), number("15550100"));
+    arg.interrogation_type = Some(InterrogationType::BasicCall);
+    arg.set_camel_info(&info).unwrap();
+    pinned(&arg, spec::TYPED_SRI_ARG.octets);
+    let decoded: SendRoutingInfoArg =
+        gsm_map::decode(&common::vector(spec::TYPED_SRI_ARG.octets)).unwrap();
+    assert_eq!(decoded.camel_info_typed().unwrap().unwrap(), info);
+}
+
+#[test]
+fn typed_helpers_distinguish_absence_and_malformed_contents() {
+    use gsm_map::types::Opaque;
+    let mut arg = InsertSubscriberDataArg::default();
+    assert!(arg.vlr_camel_subscription_info_typed().is_none());
+    assert!(arg.gprs_subscription_data_typed().is_none());
+    arg.vlr_camel_subscription_info = Some(Opaque::new(vec![0xa0, 1, 0]));
+    arg.gprs_subscription_data = Some(Opaque::new(vec![0xa1, 1, 0]));
+    assert!(arg.vlr_camel_subscription_info_typed().unwrap().is_err());
+    assert!(arg.gprs_subscription_data_typed().unwrap().is_err());
+    let mut sri = SendRoutingInfoArg::new(number("15550100"), number("15550100"));
+    assert!(sri.camel_info_typed().is_none());
+    sri.camel_info = Some(Opaque::new(vec![3, 2, 8, 0])); // invalid unused-bit count
+    assert!(sri.camel_info_typed().unwrap().is_err());
+    let mut res = SendRoutingInfoRes::default();
+    assert!(res.extended_routing_info_typed().is_none());
+    res.extended_routing_info = Some(Opaque::new(vec![0xa8, 0])); // missing GMSC info
+    assert!(res.extended_routing_info_typed().unwrap().is_err());
+    res.extended_routing_info = Some(Opaque::new(vec![4, 1, 0x91, 5, 0]));
+    assert!(res.extended_routing_info_typed().unwrap().is_err()); // trailing TLV
+}
+
+#[test]
+fn vlr_uninterpreted_members_survive_typed_access() {
+    // Handwritten context TLVs, including the primitive NULL tif-CSI.
+    let bytes = common::vector(
+        "30 1e a2 02 30 00 a4 02 30 00 83 00 a5 00 a6 00
+        a7 02 30 00 a8 02 30 00 a9 00 aa 00 ab 02 30 00",
+    );
+    let vlr: VlrCamelSubscriptionInfo = gsm_map::decode(&bytes).unwrap();
+    assert!(vlr.tif_csi.is_some());
+    assert_eq!(gsm_map::encode(&vlr).unwrap(), bytes);
+    let mut arg = InsertSubscriberDataArg::default();
+    arg.set_vlr_camel_subscription_info(&vlr).unwrap();
+    assert_eq!(
+        arg.vlr_camel_subscription_info_typed().unwrap().unwrap(),
+        vlr
+    );
+}
+
+#[test]
+fn sri_without_routing_info_does_not_consume_following_members() {
+    let res = SendRoutingInfoRes {
+        cug_subscription_flag: Some(()),
+        vmsc_address: Some(number("15550100")),
+        ..Default::default()
+    };
+    pinned(&res, "a3 09 86 00 82 05 91 51 55 10 00");
+    let bytes = gsm_map::encode(&res).unwrap();
+    assert_eq!(
+        rasn::ber::decode::<SendRoutingInfoRes>(&bytes).unwrap(),
+        res
+    );
+}
+
+#[test]
+fn sequence_helpers_handle_long_form_lengths() {
+    let context = PdpContext::new(
+        1.into(),
+        oct(&[0xf1, 0x21]),
+        oct(&[0; 3]),
+        oct(b"\x08internet"),
+    );
+    let data = GprsSubscriptionData::new(vec![context; 10]);
+    let mut arg = InsertSubscriberDataArg::default();
+    arg.set_gprs_subscription_data(&data).unwrap();
+    let decoded: InsertSubscriberDataArg =
+        gsm_map::decode(&gsm_map::encode(&arg).unwrap()).unwrap();
+    assert_eq!(
+        decoded.gprs_subscription_data_typed().unwrap().unwrap(),
+        data
+    );
+}
+
+#[test]
+fn typed_sri_forwarding() {
+    use gsm_map::operations::call_handling::ForwardingData;
+    sri_result(
+        ExtendedRoutingInfo::RoutingInfo(RoutingInfo::ForwardingData(ForwardingData {
+            forwarded_to_number: Some(number("15550100")),
+            extension_container: Some(Default::default()),
+            long_forwarded_to_number: Some(number("15550101")),
+            ..Default::default()
+        })),
+        &spec::TYPED_SRI_FORWARDING,
+    );
+}
+
+#[test]
+fn sri_rejects_multiple_routing_alternatives() {
+    let bytes = common::vector("a3 09 04 05 91 51 55 10 00 30 00");
+    assert!(gsm_map::decode::<SendRoutingInfoRes>(&bytes).is_err());
+}
+
+#[test]
+fn typed_extension_members_and_unrecognised_enumerations_survive() {
+    use gsm_map::types::{ExtensionContainer, Opaque};
+    let mut terminating = t_csi();
+    terminating.extension_container = Some(ExtensionContainer::default());
+    terminating.camel_capability_handling = Some(4.into());
+    terminating.notification_to_cse = Some(());
+    terminating.csi_active = Some(());
+    terminating.t_bcsm_camel_tdp_data_list[0].extension_container = Some(Default::default());
+    terminating.t_bcsm_camel_tdp_data_list[0].t_bcsm_trigger_detection_point =
+        TBcsmTriggerDetectionPoint::Unrecognised(99);
+    let originating = OCsi {
+        extension_container: Some(Default::default()),
+        camel_capability_handling: Some(4.into()),
+        notification_to_cse: Some(()),
+        csi_active: Some(()),
+        ..OCsi::new(vec![OBcsmCamelTdpData {
+            extension_container: Some(Default::default()),
+            ..OBcsmCamelTdpData::new(
+                OBcsmTriggerDetectionPoint::RouteSelectFailure,
+                100.into(),
+                number("15550100"),
+                DefaultCallHandling::Unrecognised(99),
+            )
+        }])
+    };
+    let info = ExtendedRoutingInfo::CamelRoutingInfo(CamelRoutingInfo {
+        forwarding_data: Some(gsm_map::operations::call_handling::ForwardingData {
+            forwarded_to_subaddress: Some(oct(&[0x80, 0x50])),
+            forwarding_options: Some(oct(&[0])),
+            ..Default::default()
+        }),
+        gmsc_camel_subscription_info: GmscCamelSubscriptionInfo {
+            t_csi: Some(terminating),
+            o_csi: Some(originating),
+            extension_container: Some(Default::default()),
+            o_bcsm_camel_tdp_criteria_list: Some(Opaque::new(vec![0x30, 0])),
+            t_bcsm_camel_tdp_criteria_list: Some(Opaque::new(vec![0x30, 0])),
+            d_csi: Some(Opaque::new(vec![0x30, 0])),
+        },
+        extension_container: Some(Default::default()),
+    });
+    let mut sri = SendRoutingInfoRes::default();
+    sri.set_extended_routing_info(&info).unwrap();
+    assert_eq!(sri.extended_routing_info_typed().unwrap().unwrap(), info);
+    let camel = CamelInfo {
+        extension_container: Some(Default::default()),
+        offered_camel4_csis: Some(bits(&[true; 7])),
+        ..CamelInfo::new(bits(&[true; 4]))
+    };
+    let mut arg = SendRoutingInfoArg::new(number("15550100"), number("15550100"));
+    arg.set_camel_info(&camel).unwrap();
+    assert_eq!(arg.camel_info_typed().unwrap().unwrap(), camel);
+}
+
+#[test]
+fn all_pdp_context_members_survive_typed_access() {
+    let context = PdpContext {
+        pdp_address: Some(oct(&[192, 0, 2, 1])),
+        vplmn_address_allowed: Some(()),
+        extension_container: Some(Default::default()),
+        ext_qos_subscribed: Some(oct(&[1; 9])),
+        pdp_charging_characteristics: Some(oct(&[0, 0])),
+        ext2_qos_subscribed: Some(oct(&[1; 3])),
+        ext3_qos_subscribed: Some(oct(&[1; 3])),
+        ext4_qos_subscribed: Some(oct(&[1; 3])),
+        apn_oi_replacement: Some(oct(b"\x04test")),
+        ext_pdp_type: Some(oct(&[0xf1, 0x8d])),
+        ext_pdp_address: Some(oct(&[0; 16])),
+        ambr: Some(Ambr {
+            extension_container: Some(Default::default()),
+            extended_max_requested_bandwidth_ul: Some(100.into()),
+            extended_max_requested_bandwidth_dl: Some(200.into()),
+            ..Ambr::new(1000.into(), 2000.into())
+        }),
+        sipto_permission: Some(0.into()),
+        lipa_permission: Some(2.into()),
+        restoration_priority: Some(oct(&[1])),
+        sipto_local_network_permission: Some(1.into()),
+        nidd_mechanism: Some(1.into()),
+        scef_id: Some(oct(b"scef.test")),
+        ..PdpContext::new(1.into(), oct(&[0xf1, 0x21]), oct(&[0; 3]), oct(b"\x03ims"))
+    };
+    let data = GprsSubscriptionData {
+        extension_container: Some(Default::default()),
+        apn_oi_replacement: Some(oct(b"\x04test")),
+        ..GprsSubscriptionData::new(vec![context])
+    };
+    let mut arg = InsertSubscriberDataArg::default();
+    arg.set_gprs_subscription_data(&data).unwrap();
+    assert_eq!(arg.gprs_subscription_data_typed().unwrap().unwrap(), data);
+}

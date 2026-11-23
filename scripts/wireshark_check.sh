@@ -45,7 +45,10 @@ export WIRESHARK_CONFIG_DIR="$work/wireshark"
 mkdir -p "$WIRESHARK_CONFIG_DIR"
 
 echo "[*] emitting vectors..."
-cargo run --quiet --example wireshark_vectors >"$work/vectors.hex" 2>"$work/expected.tsv"
+# Keep Cargo diagnostics separate from the example's machine-readable stderr.
+cargo build --quiet --example wireshark_vectors
+target_dir="$(cargo metadata --format-version 1 --no-deps | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')"
+"$target_dir/debug/examples/wireshark_vectors" >"$work/vectors.hex" 2>"$work/expected.tsv"
 
 banner="$(tshark --version 2>/dev/null | head -1)"
 echo "[*] $banner"
@@ -202,6 +205,13 @@ if len(frames) != len(expected):
 
 fields_checked = 0
 for (label, kind, want, wanted), lines, all_lines in zip(expected, frames, whole):
+    # Typed KATs have no synthetic opaque placeholders: reject errors at any depth.
+    if label.startswith("spec_typed_"):
+        bad = [ln.strip() for ln in all_lines
+               if re.search(r"Malformed|Unknown|BER Error", ln, re.IGNORECASE)]
+        if bad:
+            print("  FAIL  %-36s %s" % (label, " | ".join(bad)), file=sys.stderr)
+            failures += 1
     missing = [w for w in wanted if not any(w in ln for ln in all_lines)]
     fields_checked += len(wanted) - len(missing)
     if missing:
